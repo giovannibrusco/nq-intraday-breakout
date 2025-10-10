@@ -49,9 +49,7 @@ Key takeaways a prop desk cares about:
 
 ## Repository Structure
 - `NQ_breakout.ipynb` — core backtest, analytics dashboards, and performance attribution.
-- `QQQ_bias.ipynb`, `prova.ipynb` — work-in-progress notebooks for auxiliary signals (not part of the featured analysis).
 - `Data/` — raw and derived market data used by the notebook.
-- `ssrn-4416622.pdf` — reference research paper that inspired the investigation.
 
 ## Reproduction Guide
 ```bash
