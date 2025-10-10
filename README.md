@@ -1,6 +1,6 @@
 # NQ Breakout Strategy
 
-Systematic breakout model for CME Nasdaq futures (`NQ`) built for a prop-trading style interview. The notebook reverse-engineers how the strategy behaves, quantifies edge versus a QQQ buy & hold proxy, and surfaces the operational constraints (margins, risk budget, slippage) a desk such as Jane Street or Optiver would scrutinise.
+Systematic breakout model for CME Nasdaq futures (`NQ`). The notebook reverse-engineers how the strategy behaves, quantifies edge versus a QQQ buy & hold proxy, and surfaces the operational constraints (margins, risk budget, slippage).
 
 ## Strategy Overview
 - **Universe & Horizon**: Front-month NQ futures, March 2015 – April 2025, aggregated to 5-minute bars from raw 1-minute data.
@@ -41,22 +41,24 @@ Key takeaways a prop desk cares about:
 - Per-contract economics (\$191 average) remain stable regardless of scaling, indicating linear exposure rather than liquidity decay.
 
 ## Methodology Notes
-- Data is stored under `Data/` (`nq-10y-1min.csv`, `QQQ_daily.csv`). The code resamples intraday data to 5-minute bars on the fly.
+- Market data lives in a local \Data/` folder (kept out of Git); drop `nq-10y-1min.csv` and `QQQ_daily.csv` there and the notebook resamples the intraday file to 5-minute bars on the fly.`
 - Breakout logic currently runs without additional session filters (`cond1–cond4` placeholders). They are kept in the code to inject signals such as overnight drift, prior-day range or macro overlays.
 - Fills are assumed at the close of the breakout bar. No partial fills, volatility scaling, or spread-based execution are modelled—intended as a first-pass stress test before plugging into a limit-order simulator.
 - Long trades can span multiple days; the bookkeeping keeps day indices to compute holding period and equity curves reliably.
 - The comparison to QQQ assumes full utilisation of initial capital and daily close-to-close compounding to mimic a passive ETF allocation.
 
 ## Repository Structure
-- `NQ_breakout.ipynb` — core backtest, analytics dashboards, and performance attribution.
-- `Data/` — raw and derived market data used by the notebook.
+- NQ_breakout.ipynb — core backtest, analytics dashboards, and performance attribution.
+- requirements.txt — pinned dependencies to recreate the research environment.
+- README.md — project overview and interview framing (this file).
+- Data/ (local only) — place the required CSVs here when running the notebook.
 
 ## Reproduction Guide
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install pandas numpy matplotlib jupyter
+pip install -r requirements.txt
 jupyter lab
 ```
 Open `NQ_breakout.ipynb`, run all cells, and ensure the `Data/` folder is present at the repository root. The notebook will raise clear exceptions if required files are missing or columns need renaming.
