@@ -1,0 +1,95 @@
+# Apex Trader Funding account tiers.
+# [VERIFY] Questi valori derivano dal piano iniziale e NON sono stati verificati
+# contro fonti live Apex per questa sessione. Da verificare prima del live.
+
+accounts:
+  - name: apex_25k
+    starting_balance: 25000
+    profit_target: 1500
+    trailing_threshold: 1500
+    max_contracts_nq: 3
+    max_contracts_mnq: 30
+    min_trading_days: 7
+    consistency_threshold: 0.30
+    daily_loss_limit: null
+    flatten_cutoff: "16:59"
+    allow_overnight: false
+    fee_per_rt_usd: 4.50
+
+  - name: apex_50k
+    starting_balance: 50000
+    profit_target: 3000
+    trailing_threshold: 2500
+    max_contracts_nq: 6
+    max_contracts_mnq: 60
+    min_trading_days: 7
+    consistency_threshold: 0.30
+    daily_loss_limit: null
+    flatten_cutoff: "16:59"
+    allow_overnight: false
+    fee_per_rt_usd: 4.50
+
+  - name: apex_75k
+    starting_balance: 75000
+    profit_target: 4250
+    trailing_threshold: 2750
+    max_contracts_nq: 8
+    max_contracts_mnq: 80
+    min_trading_days: 7
+    consistency_threshold: 0.30
+    daily_loss_limit: null
+    flatten_cutoff: "16:59"
+    allow_overnight: false
+    fee_per_rt_usd: 4.50
+
+  - name: apex_100k
+    starting_balance: 100000
+    profit_target: 6000
+    trailing_threshold: 3000
+    max_contracts_nq: 10
+    max_contracts_mnq: 100
+    min_trading_days: 7
+    consistency_threshold: 0.30
+    daily_loss_limit: null
+    flatten_cutoff: "16:59"
+    allow_overnight: false
+    fee_per_rt_usd: 4.50
+
+  - name: apex_150k
+    starting_balance: 150000
+    profit_target: 9000
+    trailing_threshold: 5000
+    max_contracts_nq: 15
+    max_contracts_mnq: 150
+    min_trading_days: 7
+    consistency_threshold: 0.30
+    daily_loss_limit: null
+    flatten_cutoff: "16:59"
+    allow_overnight: false
+    fee_per_rt_usd: 4.50
+
+  - name: apex_250k
+    starting_balance: 250000
+    profit_target: 15000
+    trailing_threshold: 6500
+    max_contracts_nq: 17
+    max_contracts_mnq: 170
+    min_trading_days: 7
+    consistency_threshold: 0.30
+    daily_loss_limit: null
+    flatten_cutoff: "16:59"
+    allow_overnight: false
+    fee_per_rt_usd: 4.50
+
+  - name: apex_300k
+    starting_balance: 300000
+    profit_target: 20000
+    trailing_threshold: 7500
+    max_contracts_nq: 20
+    max_contracts_mnq: 200
+    min_trading_days: 7
+    consistency_threshold: 0.30
+    daily_loss_limit: null
+    flatten_cutoff: "16:59"
+    allow_overnight: false
+    fee_per_rt_usd: 4.50

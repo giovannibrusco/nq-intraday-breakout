@@ -1,0 +1,60 @@
+# Strategy default configuration. Populated in Phase 1.
+# All values mirror current notebook/topstep_montecarlo.py defaults.
+
+strategy:
+  window_start: "08:30:00"
+  window_end: "10:00:00"
+  trade_start: "10:00:00"
+  trade_end: "14:30:00"
+  regular_start: "09:30:00"
+  regular_end: "16:00:00"
+  stop_points: 100.0
+  target_points: 200.0
+  max_trades_per_day: 2
+  max_long_hold_days: 5
+  short_intraday_only: true
+  initial_capital: 1000000.0
+  risk_pct: 0.01
+  margin_per_contract: 23282.57
+  margin_buffer: 0.15
+  max_position: 1000000
+
+  # Phase 7: long-only mode. Set true to skip all short entry logic.
+  # Phase 6 analysis shows shorts have mean PnL -$296/trade vs longs +$3,836/trade.
+  # Default false preserves Phase 1 parity and all prior behavior unchanged.
+  long_only: false
+
+  # Phase 4 regime filters. All disabled by default: none passed the block
+  # bootstrap significance test (p < 0.10 AND sharpe_delta > 0) over the full
+  # 10-year NQ sample. See docs/filter_edge_analysis.md and
+  # reports/phase4_filter_edge.csv for details.
+  filter_spec:
+    # enable_overnight_gap: false  # dropped: p=0.70, Delta_Sharpe=-0.067
+    # enable_prior_range: false    # dropped: p=0.38, Delta_Sharpe=+0.148 (best but not significant)
+    # enable_trend: false          # dropped: p=0.80, Delta_Sharpe=-0.043
+    # enable_liquidity: false      # dropped: p=0.38, Delta_Sharpe=-0.036
+    enable_overnight_gap: false
+    enable_prior_range: false
+    enable_trend: false
+    enable_liquidity: false
+    gap_pct_min_long: -0.003
+    gap_pct_max_short: 0.003
+    gap_atr_max_long: 1.5
+    gap_atr_max_both: 2.0
+    atr_window: 20
+    range_percentile_max: 0.75
+    range_window_days: 60
+    trend_ema_window: 50
+    trend_source: "NQ"
+    liquidity_session_start: "08:30:00"
+    liquidity_session_end: "10:00:00"
+    liquidity_min_ratio: 0.5
+    liquidity_median_window_days: 20
+
+instrument:
+  symbol: "NQ"
+  point_value: 20.0
+  tick_size: 0.25
+  tick_value: 5.0
+  pnl_scale: 1.0
+  position_scale: 1

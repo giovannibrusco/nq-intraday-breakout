@@ -1,0 +1,141 @@
+//@version=6
+strategy(
+     title="NQ Breakout (Notebook Port)",
+     shorttitle="NQ Breakout",
+     overlay=true,
+     pyramiding=0,
+     initial_capital=1000000,
+     // Futures-like leverage instead of 100% cash notional requirement.
+     margin_long=7,
+     margin_short=7,
+     process_orders_on_close=true,
+     calc_on_order_fills=false,
+     commission_type=strategy.commission.cash_per_contract,
+     // 0.85 USD fee/leg + 7.50 USD slippage round-turn from notebook, distributed per leg.
+     commission_value=4.6
+)
+
+isIntraday = timeframe.isintraday
+
+var bool tfWarned = false
+if not tfWarned and (not isIntraday or not (timeframe.isminutes and timeframe.multiplier == 5))
+    warnText = not isIntraday ? "Passa a un timeframe intraday (consigliato 5m)." : "Per replica fedele usa 5m."
+    label.new(bar_index, high, warnText, style=label.style_label_down, textcolor=color.white, color=color.orange)
+    tfWarned := true
+
+// ----- Inputs -----
+tz = input.string("America/New_York", "Session Timezone")
+riskPctInput = input.float(1.0, "Risk % per trade", step=0.1, minval=0.01)
+pointValue = input.float(20.0, "Point Value ($)")
+stopDollars = input.float(2000.0, "Stop per contract ($)")
+targetDollars = input.float(4000.0, "Target per contract ($)")
+marginPerContract = input.float(23282.57, "Margin per contract ($)")
+marginBufferPctInput = input.float(15.0, "Margin buffer (%)", step=0.1, minval=0.0)
+maxTradesPerDay = input.int(2, "Max trades per day", minval=1)
+maxLongHoldDays = input.int(5, "Max long hold days", minval=1)
+showRange = input.bool(true, "Plot window high/low")
+
+riskPct = riskPctInput / 100.0
+marginBufferPct = marginBufferPctInput / 100.0
+stopPoints = stopDollars / pointValue
+targetPoints = targetDollars / pointValue
+
+// ----- Session flags (ET by default) -----
+inWindow = isIntraday and not na(time(timeframe.period, "0830-1000:1234567", tz))
+inTrade = isIntraday and not na(time(timeframe.period, "1000-1430:1234567", tz))
+inRegular = isIntraday and not na(time(timeframe.period, "0930-1600:1234567", tz))
+inModelData = isIntraday and not na(time(timeframe.period, "0830-1430:1234567", tz))
+isTradeEndBar = isIntraday and not na(time(timeframe.period, "1430-1434:1234567", tz))
+afterWindowEnd = isIntraday and not na(time(timeframe.period, "1000-2359:1234567", tz))
+
+etDay = time("D", "0000-2359:1234567", tz)
+newDay = ta.change(etDay) != 0
+
+// ----- Stateful vars -----
+var float windowHigh = na
+var float windowLow = na
+var bool windowReady = false
+var int dailyTradeCount = 0
+var int dayCounter = 0
+var int entryDayCounter = na
+
+var float regularOpen = na
+var float regularHigh = na
+var float regularLow = na
+var bool hasPrevRegular = false
+
+calcContracts(stopPts) =>
+    safeStop = math.max(stopPts, syminfo.mintick)
+    safeMargin = math.max(marginPerContract, 1e-9)
+    nRisk = (riskPct * strategy.equity) / (safeStop * pointValue)
+    nMargin = strategy.equity / (safeMargin * (1.0 + marginBufferPct))
+    math.max(1, int(math.floor(math.min(nRisk, nMargin))))
+
+if barstate.isfirst
+    dayCounter := 1
+
+if newDay
+    dayCounter += 1
+    dailyTradeCount := 0
+    windowHigh := na
+    windowLow := na
+    windowReady := false
+
+    hasPrevRegular := not na(regularOpen) and not na(regularHigh) and not na(regularLow)
+    regularOpen := na
+    regularHigh := na
+    regularLow := na
+
+    if strategy.position_size < 0
+        strategy.close("Short", comment="eod_short")
+
+if inRegular
+    regularOpen := na(regularOpen) ? open : regularOpen
+    regularHigh := na(regularHigh) ? high : math.max(regularHigh, high)
+    regularLow := na(regularLow) ? low : math.min(regularLow, low)
+
+if inWindow
+    windowHigh := na(windowHigh) ? high : math.max(windowHigh, high)
+    windowLow := na(windowLow) ? low : math.min(windowLow, low)
+
+if not windowReady and afterWindowEnd and not na(windowHigh) and not na(windowLow)
+    windowReady := true
+
+filtersTodayPass = windowReady and hasPrevRegular and not na(regularOpen) and not na(regularHigh) and not na(regularLow)
+
+canEnter = strategy.position_size == 0 and inTrade and filtersTodayPass and dailyTradeCount < maxTradesPerDay and not na(windowHigh) and not na(windowLow)
+longBreak = canEnter and high > windowHigh
+shortBreak = canEnter and low < windowLow
+
+if longBreak
+    qty = calcContracts(stopPoints)
+    strategy.entry("Long", strategy.long, qty=qty, comment="breakout_long")
+    dailyTradeCount += 1
+else if shortBreak
+    qty = calcContracts(stopPoints)
+    strategy.entry("Short", strategy.short, qty=qty, comment="breakout_short")
+    dailyTradeCount += 1
+
+newPosition = strategy.position_size != 0 and strategy.position_size[1] == 0
+flatNow = strategy.position_size == 0 and strategy.position_size[1] != 0
+
+if newPosition
+    entryDayCounter := dayCounter
+if flatNow
+    entryDayCounter := na
+
+if strategy.position_size > 0 and inModelData
+    strategy.exit("Long TP/SL", "Long", stop=strategy.position_avg_price - stopPoints, limit=strategy.position_avg_price + targetPoints, comment="tp_sl")
+
+if strategy.position_size < 0 and inModelData
+    strategy.exit("Short TP/SL", "Short", stop=strategy.position_avg_price + stopPoints, limit=strategy.position_avg_price - targetPoints, comment="tp_sl")
+
+longHoldDays = strategy.position_size > 0 and not na(entryDayCounter) ? dayCounter - entryDayCounter + 1 : na
+if strategy.position_size > 0 and inModelData and not na(longHoldDays) and longHoldDays >= maxLongHoldDays
+    strategy.close("Long", comment="max_hold")
+
+if strategy.position_size < 0 and isTradeEndBar
+    strategy.close("Short", comment="eod_short")
+
+plot(showRange and windowReady ? windowHigh : na, "Window High", color=color.new(color.green, 0), linewidth=2)
+plot(showRange and windowReady ? windowLow : na, "Window Low", color=color.new(color.red, 0), linewidth=2)

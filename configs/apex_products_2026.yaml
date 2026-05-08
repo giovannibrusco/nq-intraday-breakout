@@ -1,0 +1,223 @@
+# Apex Trader Funding — New Products (2026, "4.0").
+# 4 tier × 2 varianti (Intraday Trail / EOD Trail) = 8 prodotti.
+# Source: docs/apex_rules_2026.md (verificato vs PDF ufficiali + help-center scrape 2026-04-25).
+
+products:
+
+  # ============================ 25K ============================
+
+  - name: apex_25k_intraday
+    tier: "25K"
+    variant: intraday
+    starting_balance: 25000
+    profit_target: 1500
+    max_drawdown: 1000
+    eval:
+      max_contracts_mini: 4
+      max_contracts_micro: 40
+      daily_loss_limit: null    # NO DLL in Intraday Eval
+      eval_fee: 199.00
+      eval_coupon_fee: 19.90
+      min_days_to_pass: 1
+      time_limit_days: 30
+    pa:
+      max_contracts_mini: 2
+      max_contracts_micro: 20
+      activation_fee: 89.00
+      qualifying_min_daily_profit: 100
+      payout_ladder: [1000, 1000, 1000, 1000, 1000, 1000]
+      scaling_levels:
+        - {profit_min: 0,    profit_max: 999,  max_contracts_mini: 1, daily_loss_limit: 500}
+        - {profit_min: 1000, profit_max: 1999, max_contracts_mini: 2, daily_loss_limit: 500}
+        - {profit_min: 2000, profit_max: null, max_contracts_mini: 2, daily_loss_limit: 1250}
+
+  - name: apex_25k_eod
+    tier: "25K"
+    variant: eod
+    starting_balance: 25000
+    profit_target: 1500
+    max_drawdown: 1000
+    eval:
+      max_contracts_mini: 4
+      max_contracts_micro: 40
+      daily_loss_limit: 500
+      eval_fee: 299.00
+      eval_coupon_fee: 29.90
+      min_days_to_pass: 1
+      time_limit_days: 30
+    pa:
+      max_contracts_mini: 2
+      max_contracts_micro: 20
+      activation_fee: 109.00
+      qualifying_min_daily_profit: 100
+      payout_ladder: [1000, 1000, 1000, 1000, 1000, 1000]
+      scaling_levels:
+        - {profit_min: 0,    profit_max: 999,  max_contracts_mini: 1, daily_loss_limit: 500}
+        - {profit_min: 1000, profit_max: 1999, max_contracts_mini: 2, daily_loss_limit: 500}
+        - {profit_min: 2000, profit_max: null, max_contracts_mini: 2, daily_loss_limit: 1250}
+
+  # ============================ 50K ============================
+
+  - name: apex_50k_intraday
+    tier: "50K"
+    variant: intraday
+    starting_balance: 50000
+    profit_target: 3000
+    max_drawdown: 2000
+    eval:
+      max_contracts_mini: 6
+      max_contracts_micro: 60
+      daily_loss_limit: null
+      eval_fee: 249.00
+      eval_coupon_fee: 24.90
+      min_days_to_pass: 1
+      time_limit_days: 30
+    pa:
+      max_contracts_mini: 4
+      max_contracts_micro: 40
+      activation_fee: 69.00
+      qualifying_min_daily_profit: 200
+      payout_ladder: [1500, 2000, 2500, 2500, 3000, 3000]
+      scaling_levels:
+        - {profit_min: 0,    profit_max: 1499, max_contracts_mini: 2, daily_loss_limit: 1000}
+        - {profit_min: 1500, profit_max: 2999, max_contracts_mini: 3, daily_loss_limit: 1000}
+        - {profit_min: 3000, profit_max: 5999, max_contracts_mini: 4, daily_loss_limit: 2000}
+        - {profit_min: 6000, profit_max: null, max_contracts_mini: 4, daily_loss_limit: 3000}
+
+  - name: apex_50k_eod
+    tier: "50K"
+    variant: eod
+    starting_balance: 50000
+    profit_target: 3000
+    max_drawdown: 2000
+    eval:
+      max_contracts_mini: 6
+      max_contracts_micro: 60
+      daily_loss_limit: 1000
+      eval_fee: 299.00
+      eval_coupon_fee: 29.90    # stima — verificare
+      min_days_to_pass: 1
+      time_limit_days: 30
+    pa:
+      max_contracts_mini: 4
+      max_contracts_micro: 40
+      activation_fee: 119.00
+      qualifying_min_daily_profit: 250
+      payout_ladder: [1500, 1500, 2000, 2500, 2500, 3000]
+      scaling_levels:
+        - {profit_min: 0,    profit_max: 1499, max_contracts_mini: 2, daily_loss_limit: 1000}
+        - {profit_min: 1500, profit_max: 2999, max_contracts_mini: 3, daily_loss_limit: 1000}
+        - {profit_min: 3000, profit_max: 5999, max_contracts_mini: 4, daily_loss_limit: 2000}
+        - {profit_min: 6000, profit_max: null, max_contracts_mini: 4, daily_loss_limit: 3000}
+
+  # ============================ 100K ============================
+
+  - name: apex_100k_intraday
+    tier: "100K"
+    variant: intraday
+    starting_balance: 100000
+    profit_target: 6000
+    max_drawdown: 3000
+    eval:
+      max_contracts_mini: 8
+      max_contracts_micro: 80
+      daily_loss_limit: null
+      eval_fee: 399.00
+      eval_coupon_fee: 39.90
+      min_days_to_pass: 1
+      time_limit_days: 30
+    pa:
+      max_contracts_mini: 6
+      max_contracts_micro: 60
+      activation_fee: 119.00
+      qualifying_min_daily_profit: 250
+      payout_ladder: [2000, 2500, 3000, 3000, 4000, 4000]
+      scaling_levels:
+        - {profit_min: 0,     profit_max: 1999, max_contracts_mini: 3, daily_loss_limit: 1750}
+        - {profit_min: 2000,  profit_max: 2999, max_contracts_mini: 4, daily_loss_limit: 1750}
+        - {profit_min: 3000,  profit_max: 4999, max_contracts_mini: 5, daily_loss_limit: 1750}
+        - {profit_min: 5000,  profit_max: 9999, max_contracts_mini: 6, daily_loss_limit: 2500}
+        - {profit_min: 10000, profit_max: null, max_contracts_mini: 6, daily_loss_limit: 3500}
+
+  - name: apex_100k_eod
+    tier: "100K"
+    variant: eod
+    starting_balance: 100000
+    profit_target: 6000
+    max_drawdown: 3000
+    eval:
+      max_contracts_mini: 8
+      max_contracts_micro: 80
+      daily_loss_limit: 1500
+      eval_fee: 599.00
+      eval_coupon_fee: 59.90
+      min_days_to_pass: 1
+      time_limit_days: 30
+    pa:
+      max_contracts_mini: 6
+      max_contracts_micro: 60
+      activation_fee: 139.00
+      qualifying_min_daily_profit: 300
+      payout_ladder: [2000, 2500, 2500, 3000, 4000, 4000]
+      scaling_levels:
+        - {profit_min: 0,     profit_max: 1999, max_contracts_mini: 3, daily_loss_limit: 1750}
+        - {profit_min: 2000,  profit_max: 2999, max_contracts_mini: 4, daily_loss_limit: 1750}
+        - {profit_min: 3000,  profit_max: 4999, max_contracts_mini: 5, daily_loss_limit: 1750}
+        - {profit_min: 5000,  profit_max: 9999, max_contracts_mini: 6, daily_loss_limit: 2500}
+        - {profit_min: 10000, profit_max: null, max_contracts_mini: 6, daily_loss_limit: 3500}
+
+  # ============================ 150K ============================
+
+  - name: apex_150k_intraday
+    tier: "150K"
+    variant: intraday
+    starting_balance: 150000
+    profit_target: 9000
+    max_drawdown: 4000
+    eval:
+      max_contracts_mini: 12
+      max_contracts_micro: 120
+      daily_loss_limit: null
+      eval_fee: 599.00
+      eval_coupon_fee: 59.90
+      min_days_to_pass: 1
+      time_limit_days: 30
+    pa:
+      max_contracts_mini: 10
+      max_contracts_micro: 100
+      activation_fee: 139.00
+      qualifying_min_daily_profit: 300
+      payout_ladder: [2500, 3000, 3000, 4000, 4000, 5000]
+      scaling_levels:
+        - {profit_min: 0,     profit_max: 1999, max_contracts_mini: 4,  daily_loss_limit: 2500}
+        - {profit_min: 2000,  profit_max: 2999, max_contracts_mini: 5,  daily_loss_limit: 2500}
+        - {profit_min: 3000,  profit_max: 4999, max_contracts_mini: 7,  daily_loss_limit: 2500}
+        - {profit_min: 5000,  profit_max: 9999, max_contracts_mini: 10, daily_loss_limit: 3000}
+        - {profit_min: 10000, profit_max: null, max_contracts_mini: 10, daily_loss_limit: 4000}
+
+  - name: apex_150k_eod
+    tier: "150K"
+    variant: eod
+    starting_balance: 150000
+    profit_target: 9000
+    max_drawdown: 4000
+    eval:
+      max_contracts_mini: 12
+      max_contracts_micro: 120
+      daily_loss_limit: 2000
+      eval_fee: 799.00
+      eval_coupon_fee: 79.90
+      min_days_to_pass: 1
+      time_limit_days: 30
+    pa:
+      max_contracts_mini: 10
+      max_contracts_micro: 100
+      activation_fee: 159.00
+      qualifying_min_daily_profit: 350
+      payout_ladder: [2500, 3000, 3000, 3000, 4000, 5000]
+      scaling_levels:
+        - {profit_min: 0,     profit_max: 1999, max_contracts_mini: 4,  daily_loss_limit: 2500}
+        - {profit_min: 2000,  profit_max: 2999, max_contracts_mini: 5,  daily_loss_limit: 2500}
+        - {profit_min: 3000,  profit_max: 4999, max_contracts_mini: 7,  daily_loss_limit: 2500}
+        - {profit_min: 5000,  profit_max: 9999, max_contracts_mini: 10, daily_loss_limit: 3000}
+        - {profit_min: 10000, profit_max: null, max_contracts_mini: 10, daily_loss_limit: 4000}

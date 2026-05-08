@@ -1,0 +1,14 @@
+# Data source locations.
+# Override via NQ_DATA_DIR environment variable.
+
+raw_csv:
+  nq_1min: "Data/nq-10y-1min.csv"
+  qqq_daily: "Data/QQQ_daily.csv"
+
+parquet:
+  nq_1min: "data/nq_1min.parquet"
+  qqq_daily: "data/qqq_daily.parquet"
+
+date_format: "%d/%m/%Y"
+time_format: "%H:%M:%S"
+timezone: "US/Eastern"
