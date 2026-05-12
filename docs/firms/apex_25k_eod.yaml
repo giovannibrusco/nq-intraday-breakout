@@ -1,0 +1,214 @@
+# ============================================================
+# Apex Trader Funding – 25K EOD
+# Prodotto: EOD Evaluation → EOD Performance Account (PA)
+# Data estrazione: 2026-05-09 (Claude in Chrome)
+# Gap-filling Eval block: 2026-05-10 (asserzione utente, fonte: utente
+# ha confermato che semantica DLL/trailing in Eval = identica a PA tranne
+# per l'assenza di lock sul trailing).
+# ============================================================
+
+account_size: $25,000
+# Fonte: https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/
+# Note: Il PA viene emesso nella stessa size dell'Evaluation superata
+
+# ------------------------------------------------------------------
+# EVALUATION (fase di accesso al PA)
+# ------------------------------------------------------------------
+evaluation:
+  profit_target: $1,500
+  # Fonte: https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/
+  # Tabella "Account Parameters" – colonna 25K
+
+  max_drawdown_eod: $1,000
+  # Fonte: stessa pagina
+
+  # ---- daily_loss_limit (espanso per esplicitare semantica in Eval) ----
+  # Asserzione utente 2026-05-10:
+  #   - amount: $500 (fisso, dalla pagina ufficiale Apex)
+  #   - dll_terminates_account: false (identico a PA)
+  #   - dll_calculation: "intraday from prev EOD balance" (identico a PA)
+  daily_loss_limit:
+    amount: $500
+    dll_terminates_account: false
+    dll_calculation: "intraday from prev EOD balance"
+  # Fonte amount: stessa pagina – "Daily Loss Limit $500" (fisso durante l'evaluation)
+  # Fonte semantica: ereditata da performance_account.daily_loss_limit (asserzione utente)
+  # Note: nella PA diventa tier-based (vedi sotto)
+
+  # ---- trailing_drawdown (espanso per esplicitare semantica in Eval) ----
+  # Asserzione utente 2026-05-10:
+  #   - type: "EOD trailing" (identico a PA)
+  #   - amount: $1,000 (= max_drawdown_eod sopra)
+  #   - lock_at_hwm: null (NESSUN lock in Eval — il threshold segue HWM
+  #                       all'infinito finché non si tocca profit_target)
+  #   - lock_value: null
+  trailing_drawdown:
+    type: "EOD trailing"
+    amount: $1,000
+    lock_at_hwm: null
+    lock_value: null
+  # Fonte type/amount: ereditati da performance_account.trailing_drawdown
+  # Fonte lock=null: asserzione utente (Apex non documenta lock in Eval;
+  # il lock è descritto SOLO nella pagina EOD PA / EOD Drawdown Explained)
+
+  max_contracts: 4
+  # Fonte: stessa pagina – "Max Contracts 4" per 25K Evaluation
+
+  consistency_applied: false
+  # Fonte: "Consistency: Not Applied" nella tabella della pagina Evaluations
+
+  scaling_applied: false
+  # Fonte: "Scaling: Not Applied" nella tabella della pagina Evaluations
+
+  min_trading_days: 0
+  # Fonte: "No minimum number of trading days required. You may pass in one trading day."
+  # https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-evaluations/
+
+  access_period_days: 30
+  # Fonte: stessa pagina
+
+  pa_activation_window_days: 7
+  # Fonte: "7 calendar days to activate PA after passing"
+
+# ------------------------------------------------------------------
+# PERFORMANCE ACCOUNT (PA) – fase funded
+# ------------------------------------------------------------------
+performance_account:
+
+  daily_loss_limit:
+    type: "tier-based (EOD PA)"
+    dll_calculation: "intraday from prev EOD balance"
+    # Fonte: https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/
+    # "Daily Loss Limit (DLL) enforced intraday" + tier based
+    dll_terminates_account: false
+    # Fonte: FAQ pagina PA:
+    # "Hitting the DLL pauses trading for the remainder of the session.
+    #  The account remains active and resets at the next session open."
+    # https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/
+    tiers_25k_pa:
+      - tier: "Level 1"
+        profit_range: "$0 – $999"
+        max_contracts: 1
+        dll: $500
+      - tier: "Level 2"
+        profit_range: "$1,000 – $1,999"
+        max_contracts: 2
+        dll: $500
+      - tier: "Level 3"
+        profit_range: "$2,000 & Up"
+        max_contracts: 2
+        dll: $1,250
+    # Fonte: https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/
+
+  trailing_drawdown:
+    type: "EOD trailing"
+    # Fonte: https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/
+    # "No intraday trailing drawdown"
+    # "EOD Drawdown calculated once per day at market close"
+    amount: $1,000
+    # Fonte: EOD Evaluations page – 25K Max Drawdown (EOD)
+    calculation_time: "4:59:59 PM ET ogni giorno di trading"
+    calculation_basis: "EOD account balance (closing balance)"
+    enforcement: "real-time intraday nella sessione successiva al calcolo"
+    direction: "trails solo verso l'alto; non scende mai"
+    lock_trigger: "EOD Threshold raggiunge Starting Balance + $100"
+    lock_at_hwm: $26,100
+    # = $25,000 + $1,000 (drawdown) + $100 buffer
+    # Fonte: EOD Drawdown Explained:
+    # "Once the EOD Threshold reaches Starting Balance + $100, it stops increasing."
+    # "Threshold Stop Level = $50,100 per 50K" → formula: StartingBalance + DrawdownAmount + $100 = HWM at which threshold locks
+    # Per 25K: $25,000 + $1,000 + $100 = $26,100 HWM → threshold si blocca a $25,100
+    lock_value: $25,100
+    # = Starting Balance + $100 (il threshold si ferma qui)
+    # Fonte: https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-drawdown-explained/
+    # "Once the EOD Threshold reaches Starting Balance + $100, it stops increasing"
+    eod_threshold_initial: $24,000
+    # = $25,000 − $1,000
+    breach_consequence_pa: "Chiusura permanente del PA (account closed)"
+    breach_consequence_eval: "Evaluation fallita"
+    # Fonte: stessa pagina
+
+  max_position_size:
+    note: "Dipende dal tier di scalatura giornaliero (vedi tiers_25k_pa sopra)"
+    absolute_max_contracts: 2
+    # Fonte: EOD PA page – "Max Contracts: 2" per 25K PA
+    # https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/
+    NQ: 2
+    # Note: il limite si intende in contratti standard. NQ = contratto full (mini)
+    # Al Level 1 del PA si parte con 1 contratto
+    MNQ: 20
+    # Note: 10 micro = 1 standard. Max 2 standard = 20 MNQ (al Level 3)
+    # Fonte: FAQ scaling page:
+    # "Yes, ten (10) micro contracts equal one (1) standard contract."
+    # https://apextraderfunding.com/help-center/additional-helpful-items/scaling-levels-pa-explained/
+    combined_instruments_limit: "Il limite si applica all'esposizione totale combinata su tutti gli strumenti"
+    # Fonte: stessa pagina – "the position size limit applies to all open positions combined across all instruments"
+
+  min_trading_days: 5
+  # Note: 5 giorni qualificanti per richiedere il primo payout (PA)
+  # Fonte: https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-payouts/
+  # "Each account must complete at least 5 trading days before a payout can be requested.
+  #  A qualifying trading day must meet the required minimum daily profit"
+  # Nota: i giorni non devono essere consecutivi
+  min_daily_profit_per_qualifying_day: $100
+  # Fonte: stessa pagina
+
+  consistency_rule:
+    exists: true
+    applies_to: "Payouts only (PA phase)"
+    # Note: La regola di consistenza NON si applica durante l'Evaluation (vedi evaluation.consistency_applied)
+    type: "50% consistency"
+    description: >
+      Nessun singolo giorno di trading profittevole può rappresentare il 50% o più
+      del profitto netto totale accumulato dall'ultimo payout approvato (o dall'inizio
+      dell'account se non vi sono stati payout). Se la condizione non è soddisfatta,
+      l'opzione di richiesta payout non è disponibile, ma l'account rimane attivo.
+      Formula: Highest Profit Day / Total Net Profit < 50%.
+    fonte: "https://apextraderfunding.com/help-center/additional-helpful-items/50-consistency-requirement/"
+
+  payout_rules:
+    split: "100%"
+    # Fonte: EOD PA page e Payouts page – "100% Payout Split"
+    # https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-performance-accounts-pa/
+    max_payouts_per_pa: 6
+    first_payout_eligible_after_days: 5
+    # (5 giorni qualificanti, non necessariamente consecutivi)
+    payout_frequency: "settimanale (dopo i 5 giorni qualificanti)"
+    min_payout_amount: $500
+    safety_net: $26,100
+    # = Starting Balance + Max Drawdown + $100 = $25,000 + $1,000 + $100
+    min_balance_to_request: $26,600
+    # = Safety Net + Min Payout = $26,100 + $500
+    # Fonte: https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-payouts/
+    payout_schedule_25k:
+      # Importi massimi per ciascun payout (progressivi)
+      payout_1: $1,000
+      payout_2: $1,000
+      payout_3: $1,000
+      payout_4: $1,000
+      payout_5: $1,000
+      payout_6: $1,000
+    # Fonte: tabella "EOD Performance Account Max Payouts" – colonna $25,000
+    # https://apextraderfunding.com/help-center/eod-trailing-drawdown-accounts/eod-payouts/
+    max_active_pas_simultaneously: 20
+    # Fonte: FAQ EOD PA page – "You may hold up to 20 PAs active at the same time"
+
+  prohibited_strategies:
+    - "Hedging (long e short simultanei sullo stesso strumento o strumenti correlati)"
+    - "Non-directional bracket trading (ordini aperti su entrambi i lati del mercato)"
+    - "High-Frequency Trading (HFT) o strategie exploitative del simulatore"
+    - "Utilizzo di automazione, algoritmi o copy trading"
+    - "Tenere posizioni aperte oltre la chiusura di mercato"
+    - "Usare il trailing threshold come stop-loss (far liquidare l'account come strategia)"
+    - "Risk-reward ratio superiore a 5:1 (stop loss > 5x profit target in tick)"
+    - "Strategie con profit target piccoli e stop loss sproporzionati"
+    - "Trading senza stop loss (né mentale né pendente)"
+    - "Strategie non sostenibili, windfall, o 'lottery-style'"
+    - "Scalping di tipo 'stockpiling' di evaluation account"
+    - "Uso di VPN, proxy, o cloud server per nascondere identità/posizione"
+    - "Condivisione dell'account con terzi; copy trading tra account"
+    - "News trading con ordini su entrambi i lati del mercato"
+    # Fonte: https://apextraderfunding.com/help-center/additional-helpful-items/prohibited-activities/
+    #        https://apextraderfunding.com/help-center/legacy-helpful-items/what-are-the-consistency-rules-for-legacy-pa-and-funded-accounts/
+    # NOTA (asserzione utente 2026-05-10): non vengono modellati nel simulatore
+    # — riportati qui solo come reference documentale.
