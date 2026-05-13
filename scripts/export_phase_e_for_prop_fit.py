@@ -20,10 +20,24 @@ Conventions
 - ``timezone = "America/New_York"`` — the underlying NQ 1-min parquet stores
   timestamps tz-naive but represents US/Eastern (see ``loader.py`` docstring).
 - ``session_date`` = ``entry_time.date()`` in US/Eastern.
-- ``path_end_time`` = the 1-min bar at or before 16:00 ET on ``exit_time``'s
-  date, restricted to bars present in the data and inside the RTH session
-  (09:30..16:00 ET). The validator requires ``path_end_time`` to equal the
-  last ``bar_time`` of the path bars exactly.
+- ``entry_time`` is the **post-fill** timestamp, NOT the strategy's signal-bar
+  timestamp. The Phase E strategy emits signals at the close of each 5-min
+  bar (which is timestamped at bar start with ``label="left", closed="left"``
+  in the resampler). The actual fill conceptually happens at the start of
+  the next 1-min bar. This exporter shifts ``entry_time`` by
+  ``STRATEGY_BAR_MINUTES`` (=5 min) compared to the raw backtest output so
+  that ``entry_time`` represents the first tradable moment after the signal
+  and the path invariant ``min(trade_paths.bar_time) >= entry_time`` holds.
+  Note: ``entry_price`` is unchanged — it remains the 5-min signal bar's
+  close, which is the strategy's assumed fill price at that moment. There is
+  a small theoretical mismatch (entry_price is the price at signal-bar close
+  ~ 10:14:59 for a 10:10 signal, while entry_time is the start of the next
+  1-min bar = 10:15:00); for replay purposes this is harmless because the
+  optimizer uses entry_price only as the TP/SL reference.
+- ``path_end_time`` = the last 1-min bar at or before 16:00 ET on
+  ``exit_time``'s date, restricted to bars in [entry_time, RTH_close] and
+  inside the RTH session (09:30..16:00 ET). The validator requires
+  ``path_end_time`` to equal the last ``bar_time`` of the path bars exactly.
 - ``exit_reason`` mapping (legacy → contract):
     stop        → sl
     target      → tp
@@ -88,6 +102,10 @@ TIMEZONE = "America/New_York"
 RTH_OPEN = dt.time(9, 30)
 RTH_CLOSE = dt.time(16, 0)
 BAR_INTERVAL_SECONDS = 60  # 1-min bars for path
+STRATEGY_BAR_MINUTES = 5  # the Phase E backtest operates on 5-min bars; raw
+# trades' entry_time is the bar-start timestamp of the signal bar, so we
+# shift entry_time by +5min in the export to represent the post-fill moment
+# (first 1-min bar after the signal bar's close).
 
 EXIT_REASON_MAP: dict[str, str] = {
     "stop": "sl",
@@ -179,7 +197,13 @@ def _build_trades_df(
     requires ``path_end_time`` to equal the bar_time of the LAST path bar.
     """
     out = pd.DataFrame()
-    out["entry_time"] = pd.to_datetime(raw_trades["entry_time"])
+    # entry_time is shifted to the post-fill convention: raw entry_time is
+    # the START of the 5-min signal bar, but the actual fill is at the
+    # close of that bar (= start of the next 1-min bar). Shift by
+    # STRATEGY_BAR_MINUTES so that min(path bar_time) >= entry_time holds.
+    out["entry_time"] = pd.to_datetime(
+        raw_trades["entry_time"]
+    ) + pd.Timedelta(minutes=STRATEGY_BAR_MINUTES)
     out["exit_time"] = pd.to_datetime(raw_trades["exit_time"])
     out["side"] = raw_trades["direction"].astype(str)
 
@@ -346,6 +370,36 @@ _PATH_COLS_ORDER = [
 ]
 
 
+# --- Path/entry invariant check ---------------------------------------------
+
+
+def _assert_no_pre_fill_path_bars(
+    trades_df: pd.DataFrame, paths_df: pd.DataFrame
+) -> None:
+    """Assert that no path bar precedes its trade's (shifted) entry_time.
+
+    The contract requires ``min(trade_paths.bar_time) >= entry_time`` per
+    trade after the post-fill shift. Violations would mean a path bar
+    represents a moment when the trade did not yet exist, which would lead
+    to spurious TP/SL replays in the optimizer.
+
+    Raises:
+        AssertionError: with a per-trade breakdown of the worst violations.
+    """
+    entry_by_id = trades_df.set_index("trade_id")["entry_time"]
+    min_bar_by_id = paths_df.groupby("trade_id", sort=False)["bar_time"].min()
+    joined = pd.DataFrame(
+        {"entry_time": entry_by_id, "min_bar_time": min_bar_by_id}
+    ).dropna()
+    violations = joined[joined["min_bar_time"] < joined["entry_time"]]
+    if len(violations) > 0:
+        worst = violations.head(5).to_string()
+        raise AssertionError(
+            f"Pre-fill path bars detected for {len(violations)} trade(s). "
+            f"min(bar_time) must be >= entry_time per trade. First 5:\n{worst}"
+        )
+
+
 # --- Validator (best-effort import; falls back to subprocess) ---------------
 
 
@@ -454,6 +508,13 @@ def main() -> int:
         f"({len(paths_df) / max(len(trades_df), 1):.1f} bars/trade avg)"
     )
 
+    # Post-shift invariant: min(bar_time per trade) >= entry_time per trade.
+    # Validates that no path bar is pre-fill (the user-requested fix for
+    # ambiguity #1 from the v1 export). If this fails the entry_time shift is
+    # broken, the underlying data has a discontinuity, or paths slicing logic
+    # regressed — block the run before producing invalid output.
+    _assert_no_pre_fill_path_bars(trades_df, paths_df)
+
     # Reorder columns to contract canonical order (cosmetic, helps reviewers).
     trades_df = trades_df[_TRADE_COLS_ORDER]
     paths_df = paths_df[_PATH_COLS_ORDER]
@@ -504,6 +565,13 @@ def _print_summary(
     active_days = trades_df["session_date"].nunique()
     active_day_rate = active_days / max(len(bdays), 1)
 
+    # Post-fill invariant spot-check (also asserted in main before save).
+    entry_by_id = trades_df.set_index("trade_id")["entry_time"]
+    min_bar_by_id = (
+        paths_df.groupby("trade_id", sort=False)["bar_time"].min()
+    )
+    invariant_ok = (min_bar_by_id >= entry_by_id.loc[min_bar_by_id.index]).all()
+
     print()
     print("=" * 72)
     print("Phase E export -> prop-fit optimizer contract v1")
@@ -531,6 +599,10 @@ def _print_summary(
     ):
         print(f"  {reason:<14} : {count:>6}")
     print(f"Validator status      : {validator_status}")
+    print(
+        f"Invariant min(bar_time) >= entry_time : "
+        f"{'OK' if invariant_ok else 'FAIL'}"
+    )
     print()
     print(f"Output paths:")
     print(f"  {trades_path}")
