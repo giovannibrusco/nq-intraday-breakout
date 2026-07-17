@@ -5,7 +5,7 @@ Systematic breakout model for CME Nasdaq futures (`NQ`). The trading rules were 
 ## Strategy Overview
 - **Universe & Horizon**: Front-month NQ futures, March 2015 – April 2025, aggregated to 5-minute bars from raw 1-minute data.
 - **Benchmark**: Daily QQQ closes as an equity index proxy with the same initial capital.
-- **Session Logic**: The 08:30–09:55 ET window (bars labelled before 10:00) anchors the breakout range. Entries are allowed between 10:00–14:30 ET.
+- **Session Logic**: The configured window/trading times (`08:30`–`09:55` / `10:00`–`14:30`) are **Central Time**, confirmed independently two ways: the average-volume profile peaks at 08:30 CT and decays afterward (the cash-open signature), and the data's one daily gap sits at 16:00–17:00 CT — exactly CME's native Globex maintenance halt (17:00–18:00 if the feed were Eastern). In true ET terms this is **09:30–11:00 ET** for the window and **11:00–15:30 ET** for trading — the first 90 minutes of the cash session plus the four hours after, i.e. an **opening-range breakout**, not the pre-market strategy the naming suggested. The rules themselves are unchanged from the 2022 original; only this label was wrong.
 - **Execution Rules**:
   - Long when price breaks above the window high; short when it breaks below the window low.
   - Longs can hold up to 5 sessions to capture follow-through; shorts are always flattened by the 14:30 ET cutoff — a deliberate choice not to carry short index exposure overnight (futures have no borrow cost; margins are symmetric).
@@ -16,37 +16,57 @@ Systematic breakout model for CME Nasdaq futures (`NQ`). The trading rules were 
 
 ## Simulation Methodology (`backtest.py`)
 - **Entry fill is parametric** (`entry_mode`): `'stop'` (default) models a stop order at the window extreme — fill at the breakout level, or at the bar open when the bar gaps through it; `'close'` reproduces the legacy fill at the close of the breakout bar. The original MultiCharts convention is unknown until that code is recovered, hence both.
-- **Stops and targets are gap-aware**: a bar opening beyond the level fills at the open, not at the level. When one bar touches both stop and target, the stop is assumed to hit first (conservative).
-- **Equity is marked to market daily** at each session's last close, including open positions; metrics (Sharpe, volatility, drawdown, CAGR) are computed on this trading-day MTM series, annualized with √252. Position sizing uses MTM equity.
+- **Stops and targets are gap-aware and checked bar-by-bar through the full Globex session, including overnight**: the real NQ feed is near-continuous (~1,100 bars/day, only the daily maintenance halt missing), so a long held for multiple days has every overnight bar checked against its stop/target — an exit fires the moment the level is crossed, at the exact bar and price, rather than being deferred to the next session's opening gap. A "trading day" is not a calendar date: bars after the daily halt belong to the *next* calendar date's session (`_trading_day` in `backtest.py`), matching CME's own convention. Feeds that only cover the day session (e.g. the unit-test fixtures) still work — they just fall back to the gap-on-next-open approximation, since there's nothing in between to check.
+- **Equity is marked to market daily** at each trading day's session close, including open positions; metrics (Sharpe, volatility, drawdown, CAGR) are computed on this trading-day MTM series — real trading days only, no calendar-day padding — annualized with √252. Position sizing uses MTM equity.
 - Exits are evaluated from the bar after the entry bar (intra-bar sequencing is unknowable from OHLC). No entries on a session's last bar, and never on the same bar as an exit.
-- A `run_data_diagnostics` report checks the feed before anything else: timezone (the cash-open volume spike must sit at 09:30 ET), roll splicing (large overnight gaps clustering in quarterly months indicate a non-back-adjusted continuous series), and overnight gap-through-stop exposure.
+- A `run_data_diagnostics` report checks the feed before anything else: timezone (the cash-open volume spike location, and the exact time of the daily maintenance-halt gap), roll splicing (large overnight gaps clustering in quarterly months indicate a non-back-adjusted continuous series), and overnight gap-through-stop exposure.
 
 ### Known limitations
-- The data file only covers the trading session; overnight moves are compressed into the next session's opening gap. True Globex-session data would price overnight stop-outs more accurately.
 - `margin_per_contract` is today's IB margin applied to the whole history (historical margins were far lower).
 - Slippage is constant per contract; it is not a function of order size. Stress it (2–4 ticks) before believing size-scaled results.
+- A trading day with overnight Globex activity but no actual window/trade-hours bars (e.g. a holiday) still occupies a slot in the day-count used for `max_long_hold_days`, a minor conservative approximation.
 
 ## Backtest Results
 
-> **⚠️ The tables below were generated by the legacy notebook engine** (no mark-to-market, stops filled at the stop level through gaps, slippage undercounted by 2×, \$0.85/side commission). They are kept for reference only and **must be regenerated** by running the notebook with the current `backtest.py` on the local data. Expect lower Sharpe and deeper drawdowns.
+Generated by `backtest.py` on the real feed (March 2015 – April 2025, 3.4M 1-minute bars / 693k 5-minute bars) via `NQ_breakout.ipynb`, run top to bottom.
 
-| Risk Budget per Trade | Net PnL (USD) | Trades | Avg Contracts | Sharpe | Volatility | Max Drawdown | Max Drawdown % | CAGR |
-|----------------------:|--------------:|-------:|---------------:|-------:|-----------:|--------------:|---------------:|-----:|
-| 1% of equity          | 3,287,392     | 1,728  | 9.37           | 0.95   | 11.25%     | -361,027      | 15.06%         | 15.65% |
-| 2% of equity          | 16,358,914    | 1,728  | 45.58          | 0.96   | 23.44%     | -2,884,377    | 29.51%         | 32.98% |
-| QQQ buy & hold        | —             | —      | —              | 0.64   | 18.36%     | -1,417,742    | 35.12%         | 15.74% |
+| Config | Net PnL (USD) | Trades | Avg Contracts | PnL/contract | t-stat |
+|---|---:|---:|---:|---:|---:|
+| 1% risk, stop entry | 2,800,810 | 1,725 | 8.92 | 176.94 | 3.24 |
+| 2% risk, stop entry | 12,069,455 | 1,725 | 39.65 | 176.94 | 3.24 |
+| 1% risk, close entry (legacy fill) | 3,323,800 | 1,736 | 8.94 | 190.05 | 3.49 |
+
+Exit mix (1% stop entry): 640 stop, 614 eod_short, 321 target, 150 max_hold. The t-stat is on the mean per-contract PnL net of realistic costs (H0: zero edge) — both entry conventions clear ~3.2–3.5 standard deviations on ~1,700+ trades.
+
+| | Sharpe | Volatility | Max Drawdown | Max Drawdown % | CAGR |
+|---|-------:|-----------:|--------------:|----------------:|-----:|
+| NQ 1% risk, stop entry | 1.02 | 14.12% | -507,995 | 16.82% | 14.26% |
+| NQ 2% risk, stop entry | 1.02 | 29.43% | -3,475,150 | 32.12% | 29.26% |
+| NQ 1% risk, close entry (legacy fill) | 1.11 | 14.11% | -470,265 | 17.73% | 15.74% |
+| QQQ buy & hold | 0.77 | 22.11% | -1,402,731 | 35.12% | 15.61% |
 
 Segmenting on **31 Jan 2022** — the date the rules were frozen, so the later segment is out-of-sample *conditional on that provenance claim* (the repository's git history only starts in 2025 and cannot prove it):
 
-| Period (1% risk regime) | Sharpe | Volatility | Max DD | Max DD % | CAGR |
-|-------------------------|-------:|-----------:|-------:|---------:|-----:|
-| 2015-03-29 – 2022-01-30 | 0.90   | 8.69%      | -218,605 | 14.88% | 11.43% |
-| 2022-01-31 – 2025-04-04 | 1.06   | 15.34%     | -361,027 | 15.06% | 24.57% |
+| Pre-split (2015-03-29 – 2022-01-30) | Sharpe | Volatility | Max DD | Max DD % | CAGR |
+|---|-------:|-----------:|-------:|---------:|-----:|
+| NQ 1% risk, stop entry | 1.03 | 10.27% | -221,955 | 16.42% | 10.58% |
+| NQ 2% risk, stop entry | 1.00 | 21.80% | -585,380 | 32.12% | 21.50% |
+| NQ 1% risk, close entry | 0.87 | 10.29% | -243,690 | 17.73% | 8.75% |
+| QQQ buy & hold | 0.97 | 21.23% | -663,011 | 28.56% | 20.03% |
 
-| Period (2% risk regime) | Sharpe | Volatility | Max DD | Max DD % | CAGR |
-|-------------------------|-------:|-----------:|-------:|---------:|-----:|
-| 2015-03-29 – 2022-01-30 | 0.91   | 18.35%     | -953,889 | 29.03% | 24.17% |
-| 2022-01-31 – 2025-04-04 | 1.07   | 31.70%     | -2,884,377 | 29.51% | 52.35% |
+| Post-split (2022-01-31 – 2025-04-04) | Sharpe | Volatility | Max DD | Max DD % | CAGR |
+|---|-------:|-----------:|-------:|---------:|-----:|
+| NQ 1% risk, stop entry | 1.10 | 20.03% | -507,995 | 16.82% | 22.12% |
+| NQ 2% risk, stop entry | 1.13 | 41.33% | -3,475,150 | 31.72% | 46.38% |
+| NQ 1% risk, close entry | 1.49 | 19.98% | -470,265 | 16.30% | 31.89% |
+| QQQ buy & hold | 0.35 | 23.85% | -1,173,939 | 29.56% | 5.63% |
+
+**Why these numbers differ from the pre-fix version** (previously: 1% Sharpe 0.95, vol 11.25%, DD 15.06%; QQQ Sharpe 0.64): three corrections move in different directions and roughly offset —
+- **Daily mark-to-market** raises measured volatility and drawdown versus the old realized-only equity (as expected: 14.12% vol / 16.82% DD now vs. 11.25% / 15.06% before) — this is the honest cost of no longer hiding open-position swings.
+- **True overnight stop-out monitoring** improves realized fills versus the old "compress the night into the next opening gap" approximation: a trade that briefly touched its stop overnight and partly recovered by the next open used to book the worse gap price; it now exits at the stop level the instant it's touched.
+- **Fixing a calendar-day-padding bug** in both the strategy's and the benchmark's equity series (the old code forward-filled weekend "days" into the annualized Sharpe calc, diluting it) raises both Sharpe figures — this is why QQQ's own Sharpe moved from 0.64 to 0.77 despite QQQ not changing at all.
+
+Net effect: headline Sharpe ends up similar to before, which is coincidental — the new number rests on a correct methodology, the old one didn't. The **entry-mode gap is the biggest open question**: `close` fills show a consistently higher Sharpe and PnL/contract than `stop` fills (1.11 vs 1.02 overall, 1.49 vs 1.10 post-split) — until the original MultiCharts code is recovered to confirm which convention it used, that's a real ~10–30% uncertainty band on every Sharpe figure above. The 2% regime's per-contract PnL being identical to 1%'s is a **mechanical identity of this simulator** (same trade list and fills, only size scales) — not evidence about real liquidity at 40 contracts average size, which the model does not price.
 
 ## Repository Structure
 - `backtest.py` — simulation engine, sizing, costs, metrics, data diagnostics, plotting.
@@ -67,11 +87,10 @@ jupyter lab               # then run NQ_breakout.ipynb top to bottom
 Read the data-diagnostics cell output first: if the timezone or roll checks warn, fix the data before trusting any metric.
 
 ## Extensions
-1. **Recover the 2022 MultiCharts code** — diff its trade list against this engine to pin down the entry convention and validate the port; the original source is also the provenance evidence for the out-of-sample claim.
-2. **Full Globex session data** — price overnight stop-outs instead of compressing them into opening gaps.
-3. **Volatility-scaled stops/targets** — the fixed \$2,000 stop was 2.3% of the index in 2015 and 0.5% in 2025; ATR scaling would make the rule stationary.
-4. **Execution realism** — size-dependent slippage, limit-order logic, order-book replay.
-5. **Risk tooling** — Monte Carlo block-bootstrap of the trade series, exposure by time-of-day, SPAN margin history.
+1. **Recover the 2022 MultiCharts code** — diff its trade list against this engine to pin down the entry convention (the single biggest open uncertainty above) and validate the port; the original source is also the provenance evidence for the out-of-sample claim.
+2. **Volatility-scaled stops/targets** — the fixed \$2,000 stop was 2.3% of the index in 2015 and 0.5% in 2025; ATR scaling would make the rule stationary.
+3. **Execution realism** — size-dependent slippage, limit-order logic, order-book replay.
+4. **Risk tooling** — Monte Carlo block-bootstrap of the trade series, exposure by time-of-day, SPAN margin history.
 
 ## Disclaimers
 - Historical performance is not indicative of future results; the model assumes continuous market access and ignores exchange halts.

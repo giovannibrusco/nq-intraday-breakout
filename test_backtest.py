@@ -52,6 +52,25 @@ def breakout_day(day: str = '2023-01-02') -> pd.DataFrame:
     return df
 
 
+def continuous_day(day: str, price: float) -> pd.DataFrame:
+    """One full trading day of 5-min bars: prior-date 17:00 through `day`
+    16:00, flat at `price`, mirroring the real Globex halt gap (16:00-17:00,
+    with 17:00 the first bar back). Belongs entirely to trading day `day`
+    per `_trading_day` (bars > 16:00 on the prior date map to `day`)."""
+    prior = (pd.Timestamp(day) - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+    evening = pd.date_range(f'{prior} 17:00', f'{prior} 23:55', freq='5min')
+    daytime = pd.date_range(f'{day} 00:00', f'{day} 16:00', freq='5min')
+    idx = evening.append(daytime)
+    return pd.DataFrame({
+        'date': idx,
+        'open': float(price),
+        'high': float(price) + 1,
+        'low': float(price) - 1,
+        'close': float(price),
+        'totalvolume': 100,
+    })
+
+
 # ---------------------------------------------------------------------------
 # Entry fills
 # ---------------------------------------------------------------------------
@@ -118,8 +137,10 @@ def test_target_exit_and_costs():
     assert trade['pnl'] == pytest.approx(5 * (200 * 20 - RT_COST))
 
 
-def test_overnight_gap_through_stop_fills_at_open():
-    # Long held overnight; next session opens 200 pts below the stop.
+def test_day_session_only_feed_gap_fills_at_next_open():
+    # Feed with NO overnight bars at all (day-session-only, e.g. the fixtures
+    # in this file elsewhere): the only way to see an overnight move is the
+    # gap on the next session's first bar.
     df = pd.concat([breakout_day('2023-01-02'), flat_day('2023-01-03', 14800)],
                    ignore_index=True)
     result = run_backtest(df, BASE)
@@ -128,6 +149,49 @@ def test_overnight_gap_through_stop_fills_at_open():
     assert trade['exit_time'] == pd.Timestamp('2023-01-03 08:30')
     assert trade['exit_price'] == 14800.0  # the open, NOT the 14901 stop level
     assert trade['pnl_per_contract'] == pytest.approx((14800 - 15001) * 20 - RT_COST)
+
+
+def test_overnight_bar_touches_stop_exactly():
+    # Full continuous feed (with the real Globex halt gap): an overnight bar
+    # at 02:00 trades down to the stop without opening through it. The
+    # engine must catch this the moment it happens, hours before the next
+    # window, and fill at the stop level (not the bar's open).
+    day2 = '2023-01-03'
+    df2 = continuous_day(day2, 15005)
+    set_bar(df2, f'{day2} 02:00', open=14950, high=14955, low=14890, close=14900)
+    set_from(df2, f'{day2} 02:00', 14900)
+    df = pd.concat([breakout_day('2023-01-02'), df2], ignore_index=True)
+    result = run_backtest(df, BASE)
+    trade = result.trades.iloc[0]
+    assert trade['exit_reason'] == 'stop'
+    assert trade['exit_time'] == pd.Timestamp(f'{day2} 02:00')
+    assert trade['exit_price'] == 14901.0  # the stop level, bar opened above it
+
+
+def test_overnight_bar_gaps_through_stop_mid_night():
+    # Same setup, but the overnight bar OPENS beyond the stop: gap-aware
+    # fill at the open, hours before the next session — not deferred to
+    # the 08:30 window as the day-session-only fallback would do.
+    day2 = '2023-01-03'
+    df2 = continuous_day(day2, 15005)
+    set_bar(df2, f'{day2} 02:00', open=14800, high=14805, low=14795, close=14800)
+    set_from(df2, f'{day2} 02:00', 14800)
+    df = pd.concat([breakout_day('2023-01-02'), df2], ignore_index=True)
+    result = run_backtest(df, BASE)
+    trade = result.trades.iloc[0]
+    assert trade['exit_reason'] == 'stop'
+    assert trade['exit_time'] == pd.Timestamp(f'{day2} 02:00')
+    assert trade['exit_price'] == 14800.0  # the open, gap-aware
+
+
+def test_overnight_bars_do_not_feed_window_or_trigger_entries():
+    # A large overnight spike, well outside window/trade hours, must not
+    # raise window_high/low nor be treated as a breakout entry.
+    day = '2023-01-03'
+    df = continuous_day(day, 15000)
+    set_bar(df, f'{day} 02:00', open=15000, high=20000, low=10000, close=15000)
+    result = run_backtest(df, BASE)
+    assert result.trades.empty
 
 
 def test_stop_and_target_same_bar_assumes_stop_first():

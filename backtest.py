@@ -22,9 +22,18 @@ Simulation conventions (and their limits):
 - ``margin_per_contract`` is static (today's IB margin applied to the whole
   history); historical margins were materially lower, so early-sample
   sizing under the margin cap is conservative rather than accurate.
-- Only bars inside the session file are visible: if the input data stops at
-  ``trade_end``, overnight moves are only seen as an opening gap on the
-  next session's first bar.
+- The engine simulates every bar present in the input, including overnight
+  ones: if the feed only covers the day session (as in the unit-test
+  fixtures), overnight moves are only seen as an opening gap on the next
+  session's first bar; if the feed is a near-continuous Globex file (as
+  the real NQ data is), stops and targets are checked bar-by-bar through
+  the night, catching the exact crossing instead of approximating it with
+  the next session's open.
+- A "trading day" is not a calendar date: bars at/after the daily Globex
+  halt (``regular_end``, the exchange's native maintenance break) belong
+  to the *next* calendar date's trading day, matching how CME sessions are
+  conventionally labelled. Window formation, entries, ``max_long_hold_days``
+  and the daily mark-to-market are all keyed off this trading-day mapping.
 """
 
 from __future__ import annotations
@@ -191,10 +200,18 @@ def run_data_diagnostics(df_1min: pd.DataFrame, config: Config = Config()) -> No
     print(f'Sessions opening more than {stop_pts:.0f} pts (the stop distance) away '
           f'from the prior close: {len(through)} of {len(gaps)} '
           f'({len(through) / max(len(gaps), 1):.1%}).')
-    print('These are the sessions where a resting stop fills at the open, not at '
-          'the stop level — the gap-aware fill logic handles them, but only for '
-          'gaps visible in this file (overnight moves outside the session file '
-          'are compressed into the first bar of the next session).')
+    rows_per_day = len(df) / max(df['day'].nunique(), 1)
+    if rows_per_day > 300:
+        print(f'The feed averages {rows_per_day:.0f} bars/day — consistent with '
+              'near-continuous Globex coverage. run_backtest walks every bar, '
+              'including overnight ones, so stops/targets are caught at the exact '
+              'crossing rather than approximated by these opening gaps.')
+    else:
+        print(f'The feed averages only {rows_per_day:.0f} bars/day — consistent with '
+              'day-session-only coverage. Overnight moves are invisible to '
+              'run_backtest except as the opening gap on the next session\'s first '
+              'bar (the gap-aware fill logic handles that case, but a stop crossed '
+              'and reversed overnight would be missed entirely).')
 
 
 # ---------------------------------------------------------------------------
@@ -215,32 +232,51 @@ def position_size(equity: float, stop_pts: float, config: Config) -> int:
 # Engine
 # ---------------------------------------------------------------------------
 
+def _trading_day(ts: pd.Timestamp, config: Config) -> dt.date:
+    """Map a bar's timestamp to the trading day whose regular session it
+    feeds into. Bars strictly after the daily Globex halt (``regular_end``)
+    lead into the *next* calendar date's session — e.g. a bar timestamped
+    Monday 17:00 belongs to Tuesday's trading day. The bar labelled exactly
+    ``regular_end`` (the last one before the halt, e.g. Monday 16:00) is
+    still part of Monday: the halt empties out the following 5-minute
+    buckets, so the next bar with data is the first one strictly after it."""
+    d = ts.date()
+    if ts.time() > config.regular_end:
+        return d + dt.timedelta(days=1)
+    return d
+
+
 def _prepare(df_5min: pd.DataFrame, config: Config) -> pd.DataFrame:
     df = df_5min.copy()
     df['date'] = pd.to_datetime(df['date'])
-    df = df.sort_values('date')
-    times = df['date'].dt.time
-    df = df[(times >= config.window_start) & (times <= config.trade_end)].reset_index(drop=True)
-    df['day'] = df['date'].dt.date
+    df = df.sort_values('date').reset_index(drop=True)
     df['time'] = df['date'].dt.time
+    df['trading_day'] = df['date'].map(lambda ts: _trading_day(ts, config))
     return df
 
 
 def run_backtest(df_5min: pd.DataFrame, config: Config) -> BacktestResult:
     df = _prepare(df_5min, config)
     if df.empty:
-        raise ValueError('No bars inside the configured session window.')
+        raise ValueError('No bars in the input data.')
 
-    trading_days = sorted(df['day'].unique())
+    # A "trading day" only counts (for days_in_trade / max_long_hold_days)
+    # if it appears anywhere in the feed; a trading day whose calendar date
+    # is a holiday with overnight-only Globex activity and no actual
+    # window/trade-hours bars would still occupy a slot here, a minor
+    # conservative approximation (see module docstring).
+    trading_days = sorted(df['trading_day'].unique())
     day_index = {day: i for i, day in enumerate(trading_days)}
-    last_bar_of_day = df.groupby('day')['date'].max().to_dict()
+
+    session_mask = (df['time'] >= config.window_start) & (df['time'] <= config.trade_end)
+    session_close_bar = df[session_mask].groupby('trading_day')['date'].max().to_dict()
 
     trades: list[dict] = []
-    day_marks: list[tuple] = []      # (day, mtm_equity)
+    day_marks: list[tuple] = []      # (trading_day, mtm_equity) recorded at each session's last bar
     account_value = config.initial_capital
     open_trade: dict | None = None
 
-    current_day = None
+    current_trading_day = None
     daily_trade_count = 0
     window_high = None
     window_low = None
@@ -284,19 +320,19 @@ def run_backtest(df_5min: pd.DataFrame, config: Config) -> BacktestResult:
 
     for row in df.itertuples(index=False):
         row_timestamp = row.date
-        row_day = row.day
+        row_trading_day = row.trading_day
         row_time = row.time
-        is_last_bar = row_timestamp == last_bar_of_day[row_day]
+        is_last_bar = session_close_bar.get(row_trading_day) == row_timestamp
 
-        if current_day is None:
-            current_day = row_day
-        if row_day != current_day:
-            # Safety net for sessions that end before trade_end (half days):
-            # shorts never survive overnight.
+        if current_trading_day is None:
+            current_trading_day = row_trading_day
+        if row_trading_day != current_trading_day:
+            # Safety net for trading days that never reach a session close
+            # bar (e.g. a data gap): shorts must not survive into the next
+            # trading day.
             if open_trade is not None and open_trade['direction'] == 'short':
-                close_trade(prev_row_timestamp, prev_row_close, 'eod_short', current_day)
-            day_marks.append((current_day, account_value + unrealized(prev_row_close)))
-            current_day = row_day
+                close_trade(prev_row_timestamp, prev_row_close, 'eod_short', current_trading_day)
+            current_trading_day = row_trading_day
             daily_trade_count = 0
             window_high = None
             window_low = None
@@ -309,12 +345,15 @@ def run_backtest(df_5min: pd.DataFrame, config: Config) -> BacktestResult:
         if not window_ready and row_time >= config.window_end and window_high is not None:
             window_ready = True
 
-        # ---- exits (evaluated from the bar after the entry bar) ----
+        # ---- exits (evaluated from the bar after the entry bar, on EVERY
+        # bar in the feed — including overnight ones when present, so a
+        # stop/target is caught at the exact crossing rather than only at
+        # the next session's opening gap) ----
         exited_this_bar = False
         if open_trade is not None and row_timestamp > open_trade['entry_time']:
             exit_price = None
             exit_reason = None
-            days_in_trade = day_index[row_day] - day_index[open_trade['entry_day']] + 1
+            days_in_trade = day_index[row_trading_day] - day_index[open_trade['entry_day']] + 1
             stop = open_trade['stop']
             target = open_trade['target']
             if open_trade['direction'] == 'long':
@@ -337,10 +376,10 @@ def run_backtest(df_5min: pd.DataFrame, config: Config) -> BacktestResult:
                     exit_price, exit_reason = row.open, 'target'
                 elif row.low <= target:
                     exit_price, exit_reason = target, 'target'
-                elif is_last_bar or row_time >= config.trade_end:
+                elif is_last_bar:
                     exit_price, exit_reason = row.close, 'eod_short'
             if exit_price is not None:
-                close_trade(row_timestamp, exit_price, exit_reason, row_day)
+                close_trade(row_timestamp, exit_price, exit_reason, row_trading_day)
                 exited_this_bar = True
 
         # ---- entries (never on the same bar as an exit) ----
@@ -368,7 +407,7 @@ def run_backtest(df_5min: pd.DataFrame, config: Config) -> BacktestResult:
                         'entry_price': entry_price,
                         'stop': entry_price - sign * stop_pts,
                         'target': entry_price + sign * config.target_points,
-                        'entry_day': row_day,
+                        'entry_day': row_trading_day,
                         'stop_pts': stop_pts,
                         'contracts': contracts,
                         'risk_dollars': risk_dollars,
@@ -377,12 +416,22 @@ def run_backtest(df_5min: pd.DataFrame, config: Config) -> BacktestResult:
                     }
                     daily_trade_count += 1
 
+        if is_last_bar:
+            day_marks.append((row_trading_day, account_value + unrealized(row.close)))
+
         prev_row_timestamp = row_timestamp
         prev_row_close = row.close
 
     if open_trade is not None:
-        close_trade(prev_row_timestamp, prev_row_close, 'force_close', current_day)
-    day_marks.append((current_day, account_value))
+        close_trade(prev_row_timestamp, prev_row_close, 'force_close', current_trading_day)
+    # A force_close on the same trading day as the last recorded mark means
+    # that mark was still an unrealized (pre-close) snapshot — replace it
+    # with the now-realized, cost-inclusive value instead of stacking a
+    # second entry for the same day.
+    if day_marks and day_marks[-1][0] == current_trading_day:
+        day_marks[-1] = (current_trading_day, account_value)
+    else:
+        day_marks.append((current_trading_day, account_value))
 
     equity = pd.Series({pd.Timestamp(day): value for day, value in day_marks}, name='equity')
     equity.index.name = 'date'
