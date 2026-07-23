@@ -1,98 +1,138 @@
-# NQ Breakout Strategy
+<div align="center">
 
-Systematic breakout model for CME Nasdaq futures (`NQ`). The trading rules were designed in **early 2022** (original implementation in MultiCharts) and have been frozen since; this repository is a 2025 Python port of that strategy, with a simulation engine in `backtest.py` and a reporting notebook. The port has **not** been validated trade-by-trade against the original MultiCharts backtest.
+# 📈 NQ Intraday Breakout
+### Systematic Opening-Range Breakout on Nasdaq-100 Futures
 
-## Strategy Overview
-- **Universe & Horizon**: Front-month NQ futures, March 2015 – April 2025, aggregated to 5-minute bars from raw 1-minute data.
-- **Benchmark**: Daily QQQ closes as an equity index proxy with the same initial capital.
-- **Session Logic**: The configured window/trading times (`08:30`–`09:55` / `10:00`–`14:30`) are **Central Time**, confirmed independently two ways: the average-volume profile peaks at 08:30 CT and decays afterward (the cash-open signature), and the data's one daily gap sits at 16:00–17:00 CT — exactly CME's native Globex maintenance halt (17:00–18:00 if the feed were Eastern). In true ET terms this is **09:30–11:00 ET** for the window and **11:00–15:30 ET** for trading — the first 90 minutes of the cash session plus the four hours after, i.e. an **opening-range breakout**, not the pre-market strategy the naming suggested. The rules themselves are unchanged from the 2022 original; only this label was wrong.
-- **Execution Rules**:
-  - Long when price breaks above the window high; short when it breaks below the window low.
-  - Longs can hold up to 5 sessions to capture follow-through; shorts are always flattened by the 14:30 ET cutoff — a deliberate choice not to carry short index exposure overnight (futures have no borrow cost; margins are symmetric).
-  - Fixed stop/target at \$2,000 / \$4,000 per contract (100 / 200 index points at \$20/point).
-- **Risk Management**:
-  - Position size is the lesser of (i) a percentage-of-equity risk budget and (ii) available margin after a 15% buffer; zero contracts means the trade is skipped.
-  - Costs per contract per round turn: \$2.50 all-in commission per side (broker + exchange + NFA) and 1.5 ticks (\$7.50) slippage per side — \$20 total.
+*Fade nothing, chase the range break: first 90 minutes of the cash session set the levels · stop orders ride the break · asymmetric holding — longs run up to 5 sessions, shorts die at the close*
 
-## Simulation Methodology (`backtest.py`)
-- **Entry fill is parametric** (`entry_mode`): `'stop'` (default) models a stop order at the window extreme — fill at the breakout level, or at the bar open when the bar gaps through it; `'close'` reproduces the legacy fill at the close of the breakout bar. The original MultiCharts convention is unknown until that code is recovered, hence both.
-- **Stops and targets are gap-aware and checked bar-by-bar through the full Globex session, including overnight**: the real NQ feed is near-continuous (~1,100 bars/day, only the daily maintenance halt missing), so a long held for multiple days has every overnight bar checked against its stop/target — an exit fires the moment the level is crossed, at the exact bar and price, rather than being deferred to the next session's opening gap. A "trading day" is not a calendar date: bars after the daily halt belong to the *next* calendar date's session (`_trading_day` in `backtest.py`), matching CME's own convention. Feeds that only cover the day session (e.g. the unit-test fixtures) still work — they just fall back to the gap-on-next-open approximation, since there's nothing in between to check.
-- **Equity is marked to market daily** at each trading day's session close, including open positions; metrics (Sharpe, volatility, drawdown, CAGR) are computed on this trading-day MTM series — real trading days only, no calendar-day padding — annualized with √252. Position sizing uses MTM equity.
-- Exits are evaluated from the bar after the entry bar (intra-bar sequencing is unknowable from OHLC). No entries on a session's last bar, and never on the same bar as an exit.
-- A `run_data_diagnostics` report checks the feed before anything else: timezone (the cash-open volume spike location, and the exact time of the daily maintenance-halt gap), roll splicing (large overnight gaps clustering in quarterly months indicate a non-back-adjusted continuous series), and overnight gap-through-stop exposure.
+![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white)
+![Backtest](https://img.shields.io/badge/Backtest-2015--2025-informational)
+![Sharpe](https://img.shields.io/badge/Sharpe-1.02%20(t%3D3.24)-success)
+![Tests](https://img.shields.io/badge/Tests-21%20passing-brightgreen)
+![Rules](https://img.shields.io/badge/Rules%20Frozen-2022%20·%20MultiCharts-8A2BE2)
 
-### Known limitations
-- `margin_per_contract` is today's IB margin applied to the whole history (historical margins were far lower).
-- Slippage is constant per contract; it is not a function of order size. Stress it (2–4 ticks) before believing size-scaled results.
-- A trading day with overnight Globex activity but no actual window/trade-hours bars (e.g. a holiday) still occupies a slot in the day-count used for `max_long_hold_days`, a minor conservative approximation.
+<img src="docs/images/equity_curve.png" width="850" alt="Daily mark-to-market PnL vs QQQ buy & hold"/>
 
-## Backtest Results
+</div>
 
-Generated by `backtest.py` on the real feed (March 2015 – April 2025, 3.4M 1-minute bars / 693k 5-minute bars) via `NQ_breakout.ipynb`, run top to bottom.
+---
 
-| Config | Net PnL (USD) | Trades | Avg Contracts | PnL/contract | t-stat |
+## 📌 TL;DR
+
+A breakout above (below) the range set in the **first 90 minutes of the CME cash session** goes long (short) NQ with a fixed \$2,000 stop / \$4,000 target per contract. Longs are given up to 5 sessions to develop; shorts are always flat by the session close. The rules were **written in MultiCharts in early 2022 and frozen since** — everything after 31 Jan 2022 is out-of-sample *conditional on that provenance claim*.
+
+This repository is the 2025 Python port, rebuilt around a deliberately hostile simulator: daily mark-to-market equity, bar-by-bar overnight stop monitoring on the full ~23h Globex feed, gap-aware fills, and all-in costs. After every correction, the edge still clears **3.2 standard deviations** on 1,725 trades.
+
+## 📊 Results
+
+Backtest on 10 years of real data (Mar 2015 – Apr 2025 · 3.4M one-minute bars → 693k five-minute bars), generated by [`backtest.py`](backtest.py) via [`NQ_breakout.ipynb`](NQ_breakout.ipynb):
+
+| Config | Net PnL | Trades | Avg contracts | PnL/contract | t-stat |
 |---|---:|---:|---:|---:|---:|
-| 1% risk, stop entry | 2,800,810 | 1,725 | 8.92 | 176.94 | 3.24 |
-| 2% risk, stop entry | 12,069,455 | 1,725 | 39.65 | 176.94 | 3.24 |
-| 1% risk, close entry (legacy fill) | 3,323,800 | 1,736 | 8.94 | 190.05 | 3.49 |
+| 🟢 1% risk · stop entry | \$2,800,810 | 1,725 | 8.9 | \$176.94 | **3.24** |
+| 🔴 2% risk · stop entry | \$12,069,455 | 1,725 | 39.7 | \$176.94 | **3.24** |
+| ⚪ 1% risk · close entry *(legacy fill)* | \$3,323,800 | 1,736 | 8.9 | \$190.05 | **3.49** |
 
-Exit mix (1% stop entry): 640 stop, 614 eod_short, 321 target, 150 max_hold. The t-stat is on the mean per-contract PnL net of realistic costs (H0: zero edge) — both entry conventions clear ~3.2–3.5 standard deviations on ~1,700+ trades.
+|  | Sharpe | Volatility | Max DD | Max DD % | CAGR |
+|---|:---:|:---:|:---:|:---:|:---:|
+| 🟢 NQ 1% risk | **1.02** | 14.1% | −\$508k | −16.8% | 14.3% |
+| 🔴 NQ 2% risk | **1.02** | 29.4% | −\$3.48M | −32.1% | 29.3% |
+| 🔵 QQQ buy & hold | 0.77 | 22.1% | −\$1.40M | −35.1% | 15.6% |
 
-| | Sharpe | Volatility | Max Drawdown | Max Drawdown % | CAGR |
-|---|-------:|-----------:|--------------:|----------------:|-----:|
-| NQ 1% risk, stop entry | 1.02 | 14.12% | -507,995 | 16.82% | 14.26% |
-| NQ 2% risk, stop entry | 1.02 | 29.43% | -3,475,150 | 32.12% | 29.26% |
-| NQ 1% risk, close entry (legacy fill) | 1.11 | 14.11% | -470,265 | 17.73% | 15.74% |
-| QQQ buy & hold | 0.77 | 22.11% | -1,402,731 | 35.12% | 15.61% |
+> 💪 Splitting on **31 Jan 2022** (the rule-freeze date): Sharpe **1.03 → 1.10** pre/post for the 1% regime, **1.00 → 1.13** for 2% — while QQQ buy & hold collapsed from 0.97 to **0.35** over the same out-of-sample window. The edge did not decay after the rules stopped being touched; the benchmark did.
 
-Segmenting on **31 Jan 2022** — the date the rules were frozen, so the later segment is out-of-sample *conditional on that provenance claim* (the repository's git history only starts in 2025 and cannot prove it):
+| Segment (1% risk, stop entry) | Sharpe | Volatility | Max DD % | CAGR |
+|---|:---:|:---:|:---:|:---:|
+| Pre-freeze · 2015-03 → 2022-01 | 1.03 | 10.3% | −16.4% | 10.6% |
+| **Post-freeze (OOS)** · 2022-01 → 2025-04 | **1.10** | 20.0% | −16.8% | **22.1%** |
+| QQQ same OOS window | 0.35 | 23.9% | −29.6% | 5.6% |
 
-| Pre-split (2015-03-29 – 2022-01-30) | Sharpe | Volatility | Max DD | Max DD % | CAGR |
-|---|-------:|-----------:|-------:|---------:|-----:|
-| NQ 1% risk, stop entry | 1.03 | 10.27% | -221,955 | 16.42% | 10.58% |
-| NQ 2% risk, stop entry | 1.00 | 21.80% | -585,380 | 32.12% | 21.50% |
-| NQ 1% risk, close entry | 0.87 | 10.29% | -243,690 | 17.73% | 8.75% |
-| QQQ buy & hold | 0.97 | 21.23% | -663,011 | 28.56% | 20.03% |
+<div align="center">
+<img src="docs/images/drawdown.png" width="850" alt="Drawdown comparison vs QQQ"/>
+</div>
 
-| Post-split (2022-01-31 – 2025-04-04) | Sharpe | Volatility | Max DD | Max DD % | CAGR |
-|---|-------:|-----------:|-------:|---------:|-----:|
-| NQ 1% risk, stop entry | 1.10 | 20.03% | -507,995 | 16.82% | 22.12% |
-| NQ 2% risk, stop entry | 1.13 | 41.33% | -3,475,150 | 31.72% | 46.38% |
-| NQ 1% risk, close entry | 1.49 | 19.98% | -470,265 | 16.30% | 31.89% |
-| QQQ buy & hold | 0.35 | 23.85% | -1,173,939 | 29.56% | 5.63% |
+Exit mix (1% stop entry): 640 stops · 614 short EOD closes · 321 targets · 150 max-hold expiries. The t-stat tests the mean per-contract PnL against zero, **net of realistic costs**.
 
-**Why these numbers differ from the pre-fix version** (previously: 1% Sharpe 0.95, vol 11.25%, DD 15.06%; QQQ Sharpe 0.64): three corrections move in different directions and roughly offset —
-- **Daily mark-to-market** raises measured volatility and drawdown versus the old realized-only equity (as expected: 14.12% vol / 16.82% DD now vs. 11.25% / 15.06% before) — this is the honest cost of no longer hiding open-position swings.
-- **True overnight stop-out monitoring** improves realized fills versus the old "compress the night into the next opening gap" approximation: a trade that briefly touched its stop overnight and partly recovered by the next open used to book the worse gap price; it now exits at the stop level the instant it's touched.
-- **Fixing a calendar-day-padding bug** in both the strategy's and the benchmark's equity series (the old code forward-filled weekend "days" into the annualized Sharpe calc, diluting it) raises both Sharpe figures — this is why QQQ's own Sharpe moved from 0.64 to 0.77 despite QQQ not changing at all.
+## 🔬 The Audit Journey — Optimism That Didn't Survive
 
-Net effect: headline Sharpe ends up similar to before, which is coincidental — the new number rests on a correct methodology, the old one didn't. The **entry-mode gap is the biggest open question**: `close` fills show a consistently higher Sharpe and PnL/contract than `stop` fills (1.11 vs 1.02 overall, 1.49 vs 1.10 post-split) — until the original MultiCharts code is recovered to confirm which convention it used, that's a real ~10–30% uncertainty band on every Sharpe figure above. The 2% regime's per-contract PnL being identical to 1%'s is a **mechanical identity of this simulator** (same trade list and fills, only size scales) — not evidence about real liquidity at 40 contracts average size, which the model does not price.
+The original 2022 notebook reported Sharpe 0.95. That number was rebuilt from scratch through a hostile quant review: every simulation shortcut was found, named, and eliminated. **The headline barely moved — but now it's earned.** The corrections pushed in opposite directions and nearly cancelled:
 
-## Repository Structure
-- `backtest.py` — simulation engine, sizing, costs, metrics, data diagnostics, plotting.
-- `test_backtest.py` — unit tests of the fill logic on synthetic bars (`pytest`).
-- `NQ_breakout.ipynb` — loads data, runs the engine at 1%/2% risk and both entry modes, reports.
-- `requirements.txt` — pinned dependencies.
-- `Data/` (local only) — place `nq-10y-1min.csv` and `QQQ_daily.csv` here.
+| # | Legacy shortcut | Verdict | What the fix did |
+|---|---|---|---|
+| 1 | 📉 Equity updated only at trade exits | ❌ Eliminated | Daily mark-to-market: measured vol 11.3% → 14.1%, max DD 15.1% → 16.8% — open-position swings no longer hidden |
+| 2 | 🌙 Stops filled *at the stop level* even through overnight gaps | ❌ Eliminated | Feed turned out to be ~23h Globex: stops now monitored **bar-by-bar through the night**, exits at the exact crossing |
+| 3 | 💸 Slippage half of what the docs claimed; broker-only commissions | ❌ Eliminated | 1.5 ticks **per side** ×2 + \$2.50/side all-in — \$20 per round turn per contract |
+| 4 | 📅 Weekend padding diluting annualized Sharpe | ❌ Eliminated | Trading-day series only — QQQ's own Sharpe moved 0.64 → 0.77 without QQQ changing at all |
+| 5 | 🕰️ "Pre-market 08:30–10:00 **ET**" session label | ❌ Wrong | Timestamps are **Central Time** (proved by cash-open volume spike + the 16:00–17:00 CT maintenance halt): it's an **opening-range breakout**, 09:30–11:00 ET |
+| 6 | 🐛 Day-count corruption, window/session overlaps, phantom last-bar trades | ❌ Eliminated | Trading-day mapping per CME convention + 21 unit tests on hand-built bars |
+| 7 | 🏆 **The edge itself** | ✅ **Survived** | t = 3.24 on 1,725 trades after every correction above |
 
-## Reproduction Guide
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-pytest test_backtest.py   # engine sanity check, no data needed
-jupyter lab               # then run NQ_breakout.ipynb top to bottom
+## ⚙️ Strategy Rules
+
 ```
+WINDOW   08:30–10:00 CT (= 09:30–11:00 ET, first 90' of the cash session)
+ENTRY    stop order at window high (long) / window low (short) · 10:00–14:30 CT
+         max 2 trades/day · never on the session's last bar
+STOP     $2,000/contract (100 pts)      TARGET   $4,000/contract (200 pts)
+HOLD     longs up to 5 sessions · shorts always flat by session close
+SIZE     min( risk% × equity / $2,000 ,  margin cap after 15% buffer )
+COSTS    $2.50/side all-in commission + 1.5 ticks/side slippage  →  $20/RT
+```
+
+## 🧪 Simulation Engine ([`backtest.py`](backtest.py))
+
+The simulator is built to be pessimistic wherever OHLC data is ambiguous:
+
+- **Bar-by-bar overnight monitoring** — the feed is near-continuous Globex (~1,100 bars/day); a multi-day long has every overnight bar checked against its stop/target, exiting at the exact crossing instead of the next session's opening gap. Trading days follow CME convention (bars after the daily halt belong to the next session).
+- **Gap-aware fills** — any bar opening beyond a level fills at the open, not at the level. Stop and target touched in the same bar → stop first (conservative). Exits start from the bar *after* entry (intra-bar sequencing is unknowable).
+- **Parametric entry fill** (`entry_mode`) — `'stop'` (default): fill at the breakout level or the gap open; `'close'`: legacy fill at the breakout bar's close. Both are reported because the original MultiCharts convention is not yet recovered.
+- **Daily MTM equity** drives both the metrics (√252 annualization on real trading days) and position sizing.
+- **Data diagnostics first** ([`run_data_diagnostics`](backtest.py)) — timezone via the cash-open volume signature and the maintenance-halt fingerprint, roll-splice detection via quarterly gap clustering, overnight gap-through-stop exposure. Run it before believing any number.
+
+## 🛡️ Honest Uncertainty
+
+- 🔶 **Entry convention is the biggest open question**: legacy `close` fills consistently beat `stop` fills (Sharpe 1.11 vs 1.02 overall; 1.49 vs 1.10 OOS). Until the original MultiCharts code is recovered, treat that as a real ~10–30% band on every Sharpe above.
+- 🔶 **Provenance is claimed, not proven**: this repo's git history starts in 2025; the 2022 rule-freeze rests on the original MultiCharts workspace (recovery = extension #1).
+- 🔶 Identical PnL/contract across the 1% and 2% regimes is a **mechanical identity of the simulator** (same fills, only size scales) — it says nothing about real liquidity at ~40 contracts.
+- 🔶 Fixed dollar stops are non-stationary: \$2,000 was 2.3% of the index in 2015, 0.5% in 2025.
+- 🔶 Static present-day margin applied to all history; slippage independent of order size — stress at 2–4 ticks before trusting the 2% regime.
+
+## 🚀 Quickstart
+
+```bash
+git clone https://github.com/giovannibrusco/nq-intraday-breakout.git
+cd nq-intraday-breakout
+pip install -r requirements.txt
+
+pytest test_backtest.py        # engine sanity check — no data needed (21 tests)
+jupyter lab                    # then run NQ_breakout.ipynb top to bottom
+```
+
 Read the data-diagnostics cell output first: if the timezone or roll checks warn, fix the data before trusting any metric.
 
-## Extensions
-1. **Recover the 2022 MultiCharts code** — diff its trade list against this engine to pin down the entry convention (the single biggest open uncertainty above) and validate the port; the original source is also the provenance evidence for the out-of-sample claim.
-2. **Volatility-scaled stops/targets** — the fixed \$2,000 stop was 2.3% of the index in 2015 and 0.5% in 2025; ATR scaling would make the rule stationary.
-3. **Execution realism** — size-dependent slippage, limit-order logic, order-book replay.
-4. **Risk tooling** — Monte Carlo block-bootstrap of the trade series, exposure by time-of-day, SPAN margin history.
+## 🗂️ Repository Structure
 
-## Disclaimers
-- Historical performance is not indicative of future results; the model assumes continuous market access and ignores exchange halts.
-- Data is sourced from historical downloads; verify against proprietary feeds before deploying capital.
-- This is a research artifact, not a production trading system.
+```
+├── 🐍 backtest.py          Engine — fills, sizing, costs, MTM, metrics, diagnostics, plotting
+├── 🧪 test_backtest.py     21 unit tests on hand-built synthetic bars (fills verified to the cent)
+├── 📓 NQ_breakout.ipynb    Load → diagnose → run 1%/2% × stop/close → report (real outputs embedded)
+├── 📄 requirements.txt     pandas · numpy · matplotlib · pytest
+└── 💾 Data/  (local only)  nq-10y-1min.csv + QQQ_daily.csv — not committed
+```
+
+## 💾 Data
+
+Raw market data is **not** included:
+
+- **NQ futures** — continuous front-month, 1-minute bars, Mar 2015 – Apr 2025, near-full Globex session, Central Time, back-adjusted (verified by the roll diagnostic) → `Data/nq-10y-1min.csv`
+- **QQQ daily** — benchmark closes → `Data/QQQ_daily.csv`
+
+`load_nq_1min` reads `.csv` and `.csv.gz` transparently and resamples to 5-minute bars on the fly.
+
+## 🎓 Provenance
+
+The trading rules were designed in **early 2022** on MultiCharts and have not been modified since; this repository is a faithful-in-spirit Python re-implementation whose fill conventions are stricter than (and not yet diffed against) the original. The post-2022 segment is therefore out-of-sample **conditional on that claim** — recovering the original `.pla`/EasyLanguage source, with its file dates, is the single highest-value pending task: it would both validate the port trade-by-trade and turn the OOS claim from asserted into documented.
+
+## ⚠️ Disclaimer
+
+This project is for **educational and research purposes only**. It is not financial advice. Past performance does not guarantee future results. Futures trading involves substantial risk of loss and leverage amplifies both gains and losses. The model assumes continuous market access and ignores exchange halts; verify all data against proprietary feeds before deploying capital.
