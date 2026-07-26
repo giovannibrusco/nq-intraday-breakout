@@ -1,4 +1,22 @@
-__pycache__/
-.pytest_cache/
+# Market data (see data/README.md)
 Data/
+*.csv
+*.csv.gz
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
 .venv/
+venv/
+
+# Notebook
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

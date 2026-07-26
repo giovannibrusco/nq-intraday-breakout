@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nq-breakout"
+version = "0.2.0"
+description = "Opening-range breakout backtest on Nasdaq-100 futures"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Giovanni Brusco" }]
+keywords = ["backtesting", "futures", "intraday-trading", "quantitative-finance"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.25.0",
+]
+
+[project.optional-dependencies]
+notebook = ["matplotlib>=3.7.0", "jupyterlab>=4.0.0"]
+dev = ["pytest>=7.4.0"]
+
+[project.urls]
+Repository = "https://github.com/giovannibrusco/nq-intraday-breakout"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
