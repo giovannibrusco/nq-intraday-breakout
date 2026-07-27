@@ -22,25 +22,22 @@ What the file itself establishes:
   — large gaps show no clustering in quarterly roll months (33% observed
   against ~33% expected by chance).
 - **Period:** 2015-03 to 2025-04, ~3.4M one-minute rows.
+- **Exported:** 3 May 2025 (file creation timestamp), consistent with a
+  sample ending in April 2025.
 
-> **Open item — the upstream feed.** MultiCharts is the charting platform,
-> not the data source; the export does not record which feed populated it
-> (CQG, IQFeed, Kinetick, Rithmic or another). That single fact is not
-> recoverable from the file and is the one piece missing before an outside
-> reader can independently reproduce these results.
+> **Not recorded: the upstream feed.** MultiCharts is the charting
+> platform, not the data source, and its export does not name the feed
+> that populated it (CQG, IQFeed, Kinetick, Rithmic or another). The
+> macOS download-origin attribute on this copy has been lost, so the
+> feed is not recoverable from the file. Anyone reproducing these
+> results from a different vendor's NQ history should expect small
+> differences in the trade list: continuous-contract stitching and
+> roll dates are vendor-specific choices, not properties of the market.
 
-On macOS the download origin is often still recorded in the file's
-extended attributes, which answers this directly:
-
-```bash
-mdls -name kMDItemWhereFroms Data/nq-10y-1min.csv
-xattr -p com.apple.metadata:kMDItemWhereFroms Data/nq-10y-1min.csv | xxd -r -p | strings
-stat -f '%SB' Data/nq-10y-1min.csv        # file creation date
-```
-
-If those come back empty (the attribute is lost when a file is copied
-through some tools), the fallback is the MultiCharts installation's data
-source settings, or the account the historical data was purchased through.
+This is the one gap in the chain from raw data to published number.
+Everything else in this document is verifiable from the file itself, and
+`run_data_diagnostics` re-checks the timezone, roll and gap properties on
+whatever file is supplied.
 
 ## `Data/nq-10y-1min.csv`
 
