@@ -4,14 +4,43 @@ Market data is **not** committed. Place the two CSVs below in a `Data/`
 folder at the repository root (capital `D` — that is what the notebook
 loads) and they will be picked up. `Data/` is git-ignored.
 
-> **TODO (needs the author's input):** the vendor and download date of both
-> files are not recorded anywhere in the repository history. The NQ column
-> layout (`Date`, `Time`, ..., `TotalVolume`, with `dd/mm/yyyy` dates) is a
-> MultiCharts-style export, which is consistent with the strategy's
-> MultiCharts provenance, but the underlying feed (CQG / IQFeed / Kinetick
-> / other) cannot be determined from the file alone. Fill this in before
-> publishing — results that cannot be traced to a named feed cannot be
-> independently checked.
+## Provenance
+
+What the file itself establishes:
+
+- **Export format: MultiCharts.** The column set
+  (`Date`, `Time`, `Open`, `High`, `Low`, `Close`, `TotalVolume`) with
+  day-first `dd/mm/yyyy` dates is MultiCharts' CSV export layout;
+  `TotalVolume` in particular is a MultiCharts field name rather than a
+  generic vendor one. This is consistent with the strategy having been
+  written in MultiCharts in 2022.
+- **Timestamps: US/Central**, established from the data by
+  `run_data_diagnostics` (cash-open volume spike at 08:30, ×6.4 versus the
+  preceding half hour; maintenance halt at 16:00–17:00).
+- **Coverage: near-continuous Globex**, ~1,098 one-minute bars per session.
+- **Contract: front-month continuous**, and consistent with back-adjustment
+  — large gaps show no clustering in quarterly roll months (33% observed
+  against ~33% expected by chance).
+- **Period:** 2015-03 to 2025-04, ~3.4M one-minute rows.
+
+> **Open item — the upstream feed.** MultiCharts is the charting platform,
+> not the data source; the export does not record which feed populated it
+> (CQG, IQFeed, Kinetick, Rithmic or another). That single fact is not
+> recoverable from the file and is the one piece missing before an outside
+> reader can independently reproduce these results.
+
+On macOS the download origin is often still recorded in the file's
+extended attributes, which answers this directly:
+
+```bash
+mdls -name kMDItemWhereFroms Data/nq-10y-1min.csv
+xattr -p com.apple.metadata:kMDItemWhereFroms Data/nq-10y-1min.csv | xxd -r -p | strings
+stat -f '%SB' Data/nq-10y-1min.csv        # file creation date
+```
+
+If those come back empty (the attribute is lost when a file is copied
+through some tools), the fallback is the MultiCharts installation's data
+source settings, or the account the historical data was purchased through.
 
 ## `Data/nq-10y-1min.csv`
 

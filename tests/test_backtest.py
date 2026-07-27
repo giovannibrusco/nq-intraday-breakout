@@ -218,15 +218,39 @@ def test_short_flattened_at_session_end():
     assert trade['pnl_per_contract'] == pytest.approx((14999 - 15000) * 20 - RT_COST)
 
 
+MAX_HOLD_DAYS = ['2023-01-02', '2023-01-03', '2023-01-04', '2023-01-05', '2023-01-06']
+
+
+def max_hold_feed() -> pd.DataFrame:
+    frames = [breakout_day(MAX_HOLD_DAYS[0])] + [flat_day(d, 15005) for d in MAX_HOLD_DAYS[1:]]
+    return pd.concat(frames, ignore_index=True)
+
+
 def test_max_hold_exits_at_session_close_of_fifth_day():
-    days = ['2023-01-02', '2023-01-03', '2023-01-04', '2023-01-05', '2023-01-06']
-    frames = [breakout_day(days[0])] + [flat_day(d, 15005) for d in days[1:]]
-    result = run_backtest(pd.concat(frames, ignore_index=True), BASE)
-    trade = result.trades.iloc[0]
+    """'Up to 5 sessions' means flat at the CLOSE of the fifth session.
+
+    ``days_in_trade`` counts the entry day as day 1, so exiting on day 5's
+    first bar would capture none of the fifth session -- the position
+    would really be held for four complete sessions plus one overnight.
+    That is an off-by-one against the stated rule, so the exit belongs at
+    the session close. See docs/bias-audit.md item 8.
+    """
+    trade = run_backtest(max_hold_feed(), BASE).trades.iloc[0]
     assert trade['exit_reason'] == 'max_hold'
     assert trade['days_in_trade'] == 5
-    # At the 14:30 close of day 5, not on its first (pre-market) bar.
     assert trade['exit_time'] == pd.Timestamp('2023-01-06 14:30')
+
+
+def test_legacy_max_hold_timing_remains_reachable():
+    """The earlier exit is still selectable: the published legacy numbers
+    cannot be reproduced without it."""
+    from nq_breakout import SimFlags
+
+    trade = run_backtest(max_hold_feed(), BASE,
+                         SimFlags(max_hold_exit_at_close=False)).trades.iloc[0]
+    assert trade['exit_reason'] == 'max_hold'
+    # Day 5's first bar, hours before the session close above.
+    assert trade['exit_time'] == pd.Timestamp('2023-01-06 08:30')
 
 
 # ---------------------------------------------------------------------------

@@ -238,17 +238,37 @@ opposite in sign to most items here.
 
 **Confidence: high.**
 
-### 8. Max-hold longs exited at the first bar of day 5 — CHANGED BEHAVIOUR
+### 8. Max-hold longs exited at the first bar of day 5 — RESOLVED: the corrected behaviour is right
 
 **Where:** legacy `elif days_in_trade >= MAX_LONG_HOLD_DAYS:` fires on any
-bar, so the exit happened on day 5's *first* bar (08:30). The corrected
-engine adds `and is_last_bar`, exiting at 14:30 instead.
+bar, so the exit happened on day 5's *first* bar (08:30, before the
+trading window even opens). The corrected engine adds `and is_last_bar`,
+exiting at that session's close (14:30) instead.
 
-**Direction:** ambiguous. This extends every max-hold long by ~6 hours.
+**Magnitude on real data:** +$141,815 and +0.012 Sharpe (row 7 of the
+step table), and it removes 74 trades — the exit lands on a later bar, so
+some positions that used to close and free the slot for a second entry no
+longer do.
 
-**Confidence: this is not a bug fix.** Neither convention is wrong; the
-original is arguably the more conservative one. The previous rewrite
-changed it without documenting it. **Flagged for your decision.**
+**Resolution.** This document originally called it "not a bug fix, neither
+convention is wrong, flagged for the author's decision." On review that
+was too neutral. The documented rule is *"longs can hold up to 5 sessions
+to capture follow-through."* `days_in_trade` counts the entry day as day
+1, so exiting on the first bar of day 5 captures essentially none of the
+fifth session: the position is really held for four complete sessions
+plus one overnight. That is an off-by-one against the stated rule, not a
+conservative alternative reading of it.
+
+The corrected behaviour — flat at the close of the fifth session — is what
+"up to 5 sessions" describes, and is kept as the default. The legacy
+timing remains reachable via `SimFlags(max_hold_exit_at_close=False)`
+because reproducing the published legacy numbers requires it. Pinned by
+`test_max_hold_exits_at_session_close_of_fifth_day`.
+
+**Caveat that keeps this open in principle:** the argument above is from
+the rule as *written in the README*. If the original MultiCharts code
+implemented the earlier exit deliberately, that source is the authority,
+not the prose — which is one more reason recovering it is Roadmap item 1.
 
 ### 9. Trading-day mapping — CHANGED BEHAVIOUR, materially large (correction to this document)
 
