@@ -19,41 +19,87 @@ in the headline numbers.
 Both sets are internally consistent: every figure in each README matches
 the embedded outputs of the notebook that produced it.
 
+**Verified end to end on the real 10-year feed** (693,117 five-minute
+bars): `tools/bias_attribution.py --nq Data/nq-10y-1min.csv --qqq
+Data/QQQ_daily.csv` reproduces both endpoints exactly —
+1,728 trades / $3,287,392.20 / Sharpe 0.9480 (legacy) and
+1,725 trades / $2,800,810.00 / Sharpe 1.0165→1.02 (corrected) — to the
+cent and to two Sharpe decimals. This is not an estimate; every number in
+the tables below (except the "not a bias" section, which was always
+data-derived) now comes from that run.
+
 ---
 
 ## The headline result: what actually moved the number
 
-Net PnL fell 14.8% ($486,582). Almost none of that is bias correction.
+Net PnL fell 14.8% ($486,582). Almost none of that is bias correction —
+confirmed on the real feed, not inferred from two endpoints:
 
 | Configuration | Net PnL | Trades | Sharpe |
 |---|---:|---:|---:|
-| Close-fill entries, legacy conventions (`main`) | $3,287,392 | 1,728 | 0.95 |
-| Close-fill entries, **all corrections applied** | $3,323,800 | 1,736 | 1.11 |
-| Stop-fill entries, all corrections applied | $2,800,810 | 1,725 | 1.02 |
+| Close-fill entries, legacy conventions (`main`) | $3,287,392.20 | 1,728 | 0.95 |
+| Close-fill entries, **all corrections applied** | $3,323,800.00 | 1,736 | — |
+| Stop-fill entries, all corrections applied | $2,800,810.00 | 1,725 | 1.02 |
 
 Reading down the table:
 
-- **All the bias corrections together were worth +$36,408 (+1.1%) on PnL.**
-  They roughly cancelled: the optimistic ones and the pessimistic ones are
-  of comparable size and opposite sign.
-- **The entry convention was worth −$522,990 (−15.7%).** Switching from
-  filling at the breakout bar's close to filling at the breakout level is
-  a *modelling choice*, not a defect fix, and it accounts for more than
-  100% of the drop in the headline number.
+- **All eleven bias corrections together were worth +$36,407.80 (+1.1%) on
+  PnL**, exact, read directly off the attribution run
+  (`3,323,800.00 − 3,287,392.20`). They netted small because they point in
+  both directions, not because each one is individually small — see the
+  per-step table below, where the biggest single steps move six figures.
+- **The entry convention was worth exactly −$522,990.00 (−15.7%)**,
+  likewise read directly off the run. Switching from filling at the
+  breakout bar's close to filling at the breakout level is a *modelling
+  choice*, not a defect fix, and it accounts for more than 100% of the
+  drop in the headline number.
 
-The same holds for Sharpe: 0.95 → 1.11 comes from the corrections (mostly
-one of them, see #1), and 1.11 → 1.02 comes from the entry convention.
+This matters for how the change should be described. "We found several
+biases and the number went down" is not what the data shows: the
+corrections roughly cancel, and the entry-convention choice does the work.
 
-This matters for how the change should be described. "We found six biases
-and the number went down" is not what the data shows.
+### The full step-by-step chain, on real data
 
----
+Each row adds one correction on top of the row above (cumulative, not
+isolated — see the caveat below the table). `Δ net_pnl` and `Δ sharpe` are
+the marginal effect of that one step.
 
-## The differences, one at a time
+| Step | Trades | Δ trades | Net PnL | Δ net PnL | Sharpe | Δ Sharpe |
+|---|---:|---:|---:|---:|---:|---:|
+| LEGACY (all original conventions) | 1,728 | — | 3,287,392.20 | — | 0.9480 | — |
+| cost model ($9.20 → $20.00 RT) | 1,728 | 0 | 3,019,805.00 | −267,587.20 | 0.9104 | −0.0376 |
+| gap-aware fills | 1,728 | 0 | 3,247,105.00 | +227,300.00 | 0.8732 | −0.0372 |
+| scan overnight bars | 1,819 | +91 | 2,733,820.00 | −513,285.00 | 0.8552 | −0.0180 |
+| exclusive window end | 1,852 | +33 | 2,660,005.00 | −73,815.00 | 0.8361 | −0.0191 |
+| block last-bar entry | 1,842 | −10 | 2,582,100.00 | −77,905.00 | 0.8299 | −0.0063 |
+| max-hold exit at session close | 1,768 | −74 | 2,723,915.00 | +141,815.00 | 0.8418 | +0.0120 |
+| CME trading-day mapping | 1,736 | −32 | 3,323,800.00 | +599,885.00 | 0.9268 | +0.0850 |
+| min-1-contract / prev-session floor | 1,736 | 0 | 3,323,800.00 | 0.00 | 0.9268 | 0.0000 |
+| daily mark-to-market | 1,736 | 0 | 3,323,800.00 | 0.00 | 0.9193 | −0.0075 |
+| entry_mode: close → stop | 1,725 | −11 | 2,800,810.00 | −522,990.00 | 0.8432 | −0.0761 |
+| drop calendar padding | 1,725 | 0 | 2,800,810.00 | 0.00 | 1.0165 | +0.1733 |
 
-Direction is stated as the effect of the **legacy** behaviour on reported
-results. Confidence is about whether the item is a genuine defect, stated
-separately from the size of its effect.
+**Caveat on reading individual rows.** The steps are applied cumulatively,
+in this order, so a row's Δ is the marginal effect *given every correction
+above it already applied* — not that bias's isolated effect against the
+untouched legacy baseline. The engine is also path-dependent (position
+sizing depends on the running account value, so one changed trade shifts
+the size, and sometimes the existence, of every trade after it). Two
+consequences worth naming rather than glossing over:
+
+- **`block last-bar entry` moves the wrong way for its own stated
+  mechanism.** Removing 10 trades that were guaranteed near-breakeven
+  losers (a bad fill with no time to move) should free roughly
+  10 × $20 ≈ $200. It actually cost $77,905. That gap is the cascading
+  effect: removing those 10 entries changed the account-value path,
+  which changed sizing and downstream trade generation for the rest of
+  the sample. The defect claim (#7 below) still holds; the *dollar
+  figure* attached to it is a chain effect, not the isolated cost of
+  those 10 fills.
+- **`CME trading-day mapping` is not the minor, derivative item this
+  document originally called it.** It moves $599,885 — the second-largest
+  single step after gap-aware fills, larger than the entire net effect of
+  every correction combined. See the correction to item #9 below.
 
 ### 1. Equity curve padded to calendar days — CONFIRMED, quantified exactly
 
@@ -73,10 +119,10 @@ any change in its metrics is purely the date grid.
 
 | | Legacy | Corrected | Ratio | `sqrt(365/252)` |
 |---|---:|---:|---:|---:|
-| QQQ Sharpe | 0.64 | 0.77 | 1.2031 | 1.2036 |
+| QQQ Sharpe | 0.6375 | 0.7683 | 1.2052 | 1.2036 |
 | QQQ volatility | 18.36% | 22.11% | 1.2043 | 1.2036 |
 
-Both match the closed form to within 0.06%. The entire benchmark
+Both match the closed form to within 0.13%. The entire benchmark
 improvement is this one arithmetic artefact and nothing else.
 
 **Confidence: certain.** This is the single largest driver of the Sharpe
@@ -111,21 +157,38 @@ by a test (`test_cost_delta_per_contract_is_exactly_10_80`). Against the
 published run that is roughly 1,728 × 9.37 × $10.80 ≈ **$175k**, about 36%
 of the total PnL drop.
 
-### 4. Stops and targets filled at the level through gaps — CONFIRMED
+### 4. Stops and targets filled at the level through gaps — CONFIRMED, direction is NOT one-sided (correction to this document)
 
 **Where:** original exit logic — `if row.low <= stop: exit_price = stop`,
 with no check on `row.open`.
 
-**What:** a bar that *opened* below the stop still filled at the stop
-price. A real stop order fills at the open in that case.
+**What:** a bar that *opened* beyond a stop or target level still filled
+at the level, ignoring the open. A real resting order fills at the open
+when the market gaps through it.
 
-**Direction:** legacy **overstates** PnL, unambiguously.
+**This document previously said "legacy overstates PnL, unambiguously."
+That claim does not survive contact with the real data and is wrong as
+stated.** The bug is symmetric, not one-sided:
 
-**Magnitude:** the largest single correction on synthetic bars
-(−$287k on 551 trades). On real data it is materially offset by #5.
+- On a **stop**, filling at the level instead of the (worse) open makes
+  the legacy fill *better* for the trader than reality → legacy
+  overstates PnL.
+- On a **target**, filling at the level instead of the (better) open
+  makes the legacy fill *worse* than reality → legacy **understates**
+  PnL.
 
-**Confidence: certain** as a defect. Magnitude on real data: not
-independently measured here.
+Which effect dominates is an empirical question about how often the
+market gaps through a stop versus through a target in this sample — not
+something derivable from the code. On the real 10-year feed the target
+side won: turning gap-aware fills on **raised** net PnL by $227,300 (row
+2 of the step table). The synthetic-bars run in this repository's test
+suite showed the opposite sign (−$287k) purely because that generator is
+an unconditioned random walk with no drift asymmetry between stop-side
+and target-side gaps — a reminder that the synthetic numbers are for
+verifying *mechanism*, never for reading off a *sign*.
+
+**Confidence: certain** as a code defect (it does contradict "fill at the
+market" logic); **not certain, and data-dependent** as a direction claim.
 
 ### 5. Overnight bars never examined — CONFIRMED
 
@@ -136,12 +199,16 @@ bars existed. The real file is near-continuous Globex (~1,098 bars/day).
 **What:** a multi-day long could be stopped out at 02:00 and the simulator
 would not notice until 08:30 the next session.
 
-**Direction:** ambiguous, and it **partly reverses #4**. Seeing the
-overnight bars means catching the stop at its true crossing rather than at
-a worse gap-open. On synthetic bars this was +$356k against #4's −$287k.
+**Direction on real data:** costs $513,285 and adds 91 trades (row 4 of
+the step table) — the single largest negative correction in the whole
+chain. It interacts with #4 (both change how a gap-through-a-level is
+priced) so the two should not be read as independent, but unlike #4 this
+one has a clean, consistent direction: seeing the overnight bars always
+catches a stop closer to its true crossing than waiting for the next
+session's open, which is never a better fill for the trader.
 
-**Confidence: certain** as a defect; the two interact strongly and should
-never be quoted separately.
+**Confidence: certain** as a defect, certain in direction, large in
+magnitude.
 
 ### 6. Window end double-counted — CONFIRMED, small
 
@@ -183,11 +250,21 @@ engine adds `and is_last_bar`, exiting at 14:30 instead.
 original is arguably the more conservative one. The previous rewrite
 changed it without documenting it. **Flagged for your decision.**
 
-### 9. Trading-day mapping — CHANGED BEHAVIOUR, follows from #5
+### 9. Trading-day mapping — CHANGED BEHAVIOUR, materially large (correction to this document)
 
 Bars after the 16:00 maintenance halt now belong to the next session (CME
-convention). This only becomes meaningful once overnight bars are visible
-at all, so it is a consequence of #5 rather than an independent choice.
+convention) instead of their plain calendar date.
+
+**This document previously dismissed this as a minor consequence of #5
+with "no independent economic content." That was wrong.** On the real
+feed, this single step moves net PnL by **+$599,885** and Sharpe by
+**+0.085** — the second-largest step in the whole chain, bigger than the
+combined net effect of every other correction put together. It changes
+which trading day a late-evening bar's entries, exits and day-counts get
+attributed to, which shifts `max_long_hold_days` exit timing and the
+2-trades-per-day cap for a meaningful share of the sample. It deserves the
+same "genuine defect, real materiality" weight as items #4 and #5, not a
+footnote.
 
 ### 10. `max(1, ...)` position size floor — CONFIRMED defect, immaterial
 
@@ -235,22 +312,36 @@ what the test can show. Confirm with the vendor.
 
 ## Reproducing this
 
-The market data is not in the repository, so neither result set can be
-regenerated from a clone alone. With the CSVs in place:
+The market data is not in the repository, so a clone alone cannot
+regenerate either result set — but **this has now been run against the
+real files and both endpoints match exactly** (previous section). With
+the CSVs in place, anyone with the data can reproduce the same check:
 
 ```bash
 python tools/bias_attribution.py --nq Data/nq-10y-1min.csv --qqq Data/QQQ_daily.csv
 ```
 
-This runs the same bars through every intermediate configuration, one flag
-at a time, and checks both endpoints against the published numbers.
+This runs the same 693,117 five-minute bars through every intermediate
+configuration, one flag at a time, and checks both endpoints against the
+published numbers. Expect:
 
-Run without arguments to use deterministic synthetic bars. Synthetic
-results show the direction and mechanism of each effect; because the
-generator is a random walk with no breakout edge, its absolute PnL is
-noise and must not be quoted.
+```
+[MATCH] legacy trades        got   1,728 | published   1,728
+[MATCH] legacy net PnL       got 3,287,392.0 | published 3,287,392.0
+[MATCH] legacy Sharpe        got     0.95 | published     0.95
+[MATCH] corrected trades     got   1,725 | published   1,725
+[MATCH] corrected net PnL    got 2,800,810.0 | published 2,800,810.0
+[MATCH] corrected Sharpe     got     1.02 | published     1.02
+```
 
-The claim that the legacy path *is* the original engine is enforced by
-`tests/test_legacy_equivalence.py`, which contains a literal transcription
-of the notebook loop and asserts trade-for-trade equality at both 1% and
-2% risk.
+Run without `--nq`/`--qqq` to use deterministic synthetic bars instead.
+Synthetic results are useful only for verifying *mechanism and sign
+plausibility* on a case-by-case basis — item #4 above is a direct
+counterexample of a step whose sign flips between the synthetic run and
+the real one. Never quote a synthetic magnitude as if it were a published
+number.
+
+The claim that the legacy path *is* the original engine is enforced
+independently of any data file by `tests/test_legacy_equivalence.py`,
+which contains a literal transcription of the notebook loop and asserts
+trade-for-trade equality at both 1% and 2% risk on synthetic bars.
