@@ -97,6 +97,22 @@ def build_state(step_index: int, risk_pct: float):
     return replace(Config(risk_pct=risk_pct), **cfg_kwargs), SimFlags(**flags), pad
 
 
+def published_endpoint_checks(first: dict, last: dict) -> list[tuple[str, float, float, bool]]:
+    """Compare the 1% legacy/corrected endpoints with the published values."""
+    expected = [
+        ('legacy trades', first['trades'], 1728),
+        ('legacy net PnL', round(first['net_pnl'], 0), 3287392.0),
+        ('legacy Sharpe', round(first['sharpe'], 2), 0.95),
+        ('corrected trades', last['trades'], 1725),
+        ('corrected net PnL', round(last['net_pnl'], 0), 2800810.0),
+        ('corrected Sharpe', round(last['sharpe'], 2), 1.02),
+    ]
+    return [
+        (name, got, want, abs(got - want) < max(1.0, abs(want) * 1e-6))
+        for name, got, want in expected
+    ]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--nq', type=Path, help='1-minute NQ csv (omit for synthetic bars)')
@@ -146,19 +162,22 @@ def main() -> int:
               f'Sharpe {s["sharpe"]:.2f} | vol {s["vol"]:.2%} | '
               f'maxDD {s["max_dd_pct"]:.2%} | CAGR {s["cagr"]:.2%}')
 
-    if args.nq:
+    reproduction_failed = False
+    if args.nq and abs(args.risk - 0.01) < 1e-12:
         print('\n=== Reproduction check against the published numbers ===')
-        checks = [
-            ('legacy trades', first['trades'], 1728),
-            ('legacy net PnL', round(first['net_pnl'], 0), 3287392.0),
-            ('legacy Sharpe', round(first['sharpe'], 2), 0.95),
-            ('corrected trades', last['trades'], 1725),
-            ('corrected net PnL', round(last['net_pnl'], 0), 2800810.0),
-            ('corrected Sharpe', round(last['sharpe'], 2), 1.02),
-        ]
-        for name, got, want in checks:
-            ok = 'MATCH  ' if abs(got - want) < max(1.0, abs(want) * 1e-6) else 'MISMATCH'
+        mismatches = []
+        for name, got, want, matches in published_endpoint_checks(first, last):
+            ok = 'MATCH  ' if matches else 'MISMATCH'
             print(f'  [{ok}] {name:<20} got {got:>14,} | published {want:>14,}')
+            if not matches:
+                mismatches.append(name)
+        if mismatches:
+            print(f'\nERROR: {len(mismatches)} published endpoint(s) did not reproduce: '
+                  + ', '.join(mismatches), file=sys.stderr)
+            reproduction_failed = True
+    elif args.nq:
+        print(f'\n=== Reproduction check skipped: published endpoints use '
+              f'--risk 0.01, got {args.risk:g} ===')
 
     if args.qqq:
         from nq_breakout import align_benchmark
@@ -174,7 +193,7 @@ def main() -> int:
         if padded['Sharpe']:
             print(f'  ratio {clean["Sharpe"] / padded["Sharpe"]:.4f} '
                   f'(sqrt(365/252) = 1.2036 if padding is the whole story)')
-    return 0
+    return 1 if reproduction_failed else 0
 
 
 if __name__ == '__main__':
