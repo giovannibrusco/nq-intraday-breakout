@@ -139,6 +139,7 @@ Two results worth isolating:
 ├── 🧪 tests/               full suite; no market data required
 ├── 🔧 tools/               bias_attribution.py — runs both engines flag by flag
 ├── 📄 docs/bias-audit.md   the twelve convention differences, one at a time
+├── 🧾 docs/reference-run.txt  recorded real-data run; diff against it to verify
 ├── 💾 data/README.md       CSV schema · feed properties · provenance
 └── 📓 NQ_breakout.ipynb    narrative layer; imports the package
 ```
@@ -163,7 +164,7 @@ python tools/bias_attribution.py --nq Data/nq-10y-1min.csv --qqq Data/QQQ_daily.
 jupyter lab               # then run NQ_breakout.ipynb
 ```
 
-The attribution script reproduces every figure above and asserts both endpoints against the published numbers. **Read the diagnostics output first**: if the timezone or roll checks warn, the data is not what the engine assumes.
+The attribution script reproduces every figure above and asserts both endpoints against the published numbers, exiting non-zero if any fails to reproduce. A recorded run is kept in [`docs/reference-run.txt`](docs/reference-run.txt) — diff your output against it. **Read the diagnostics output first**: if the timezone or roll checks warn, the data is not what the engine assumes.
 
 ## 💾 Data
 

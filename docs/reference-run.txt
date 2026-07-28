@@ -1,0 +1,76 @@
+Reference run of tools/bias_attribution.py against the real market data.
+=======================================================================
+
+Recorded so that the figures quoted in README.md and docs/bias-audit.md
+remain checkable from inside the repository, even though the market data
+itself is private and the notebook carries no stored outputs.
+
+Anyone holding the CSVs can regenerate this and diff against it:
+
+    python tools/bias_attribution.py \
+        --nq Data/nq-10y-1min.csv \
+        --qqq Data/QQQ_daily.csv
+
+A byte-identical result confirms the engine still reproduces both
+published result sets. A difference means either the data file or the
+engine has changed, and the reproduction check at the bottom will say
+which endpoints broke.
+
+Environment: Python 3.12, pandas 3.0.5, numpy 2.5.1, macOS arm64.
+Date of run: 27 July 2025.
+
+-----------------------------------------------------------------------
+
+Loading /Users/giovannibrusco/Desktop/nq-intraday-breakout/Data/nq-10y-1min.csv ...
+Source: /Users/giovannibrusco/Desktop/nq-intraday-breakout/Data/nq-10y-1min.csv | 693,117 five-minute bars
+
+=== Cumulative: each row adds one correction to the row above ===
+                                       trades  d_trades        net_pnl         d_pnl  pnl_per_contract  t_stat  sharpe  d_sharpe    vol  max_dd_pct   cagr
+step
+LEGACY (all original conventions)        1728         0 3,287,392.2000           NaN          191.3266  3.6345  0.9480       NaN 0.1125     -0.1506 0.1565
+cost model (slippage x2 + $2.50/side)    1728         0 3,019,805.0000 -267,587.2000          180.5266  3.4293  0.9104   -0.0376 0.1122     -0.1544 0.1491
+gap_aware_fills                          1728         0 3,247,105.0000  227,300.0000          190.1939  3.2893  0.8732   -0.0372 0.1227     -0.1898 0.1554
+scan_overnight_bars                      1819        91 2,733,820.0000 -513,285.0000          164.7114  3.2454  0.8552   -0.0180 0.1146     -0.1722 0.1418
+exclusive_window_end                     1852        33 2,660,005.0000  -73,815.0000          162.8807  3.2199  0.8361   -0.0191 0.1158     -0.1708 0.1395
+block_last_bar_entry                     1842       -10 2,582,100.0000  -77,905.0000          160.3610  3.1592  0.8299   -0.0063 0.1147     -0.1714 0.1371
+max_hold_exit_at_close                   1768       -74 2,723,915.0000  141,815.0000          171.8693  3.2147  0.8418    0.0120 0.1165     -0.1719 0.1415
+cme_trading_day                          1736       -32 3,323,800.0000  599,885.0000          190.0461  3.4866  0.9268    0.0850 0.1170     -0.1713 0.1586
+min_one_contract                         1736         0 3,323,800.0000        0.0000          190.0461  3.4866  0.9268    0.0000 0.1170     -0.1713 0.1586
+require_prev_session                     1736         0 3,323,800.0000        0.0000          190.0461  3.4866  0.9268    0.0000 0.1170     -0.1713 0.1586
+daily_mark_to_market                     1736         0 3,323,800.0000        0.0000          190.0461  3.4866  0.9193   -0.0075 0.1172     -0.1773 0.1574
+entry_mode stop                          1725       -11 2,800,810.0000 -522,990.0000          176.9391  3.2393  0.8432   -0.0761 0.1172     -0.1682 0.1426
+drop calendar padding                    1725         0 2,800,810.0000        0.0000          176.9391  3.2393  1.0165    0.1733 0.1412     -0.1682 0.1426
+
+=== Endpoints ===
+LEGACY   :  1728 trades | net PnL      3,287,392 | PnL/ct   191.33 | t 3.63 | Sharpe 0.95 | vol 11.25% | maxDD -15.06% | CAGR 15.65%
+CORRECTED:  1725 trades | net PnL      2,800,810 | PnL/ct   176.94 | t 3.24 | Sharpe 1.02 | vol 14.12% | maxDD -16.82% | CAGR 14.26%
+
+=== Reproduction check against the published numbers ===
+  [MATCH  ] legacy trades        got          1,728 | published          1,728
+  [MATCH  ] legacy net PnL       got    3,287,392.0 | published    3,287,392.0
+  [MATCH  ] legacy Sharpe        got           0.95 | published           0.95
+  [MATCH  ] corrected trades     got          1,725 | published          1,725
+  [MATCH  ] corrected net PnL    got    2,800,810.0 | published    2,800,810.0
+  [MATCH  ] corrected Sharpe     got           1.02 | published           1.02
+
+=== Benchmark control (QQQ unchanged; only the date grid differs) ===
+  calendar-padded : Sharpe 0.6375 | vol 18.3562%
+  trading-day only: Sharpe 0.7683 | vol 22.1092%
+  ratio 1.2052 (sqrt(365/252) = 1.2036 if padding is the whole story)
+
+-----------------------------------------------------------------------
+Notes on reading this
+-----------------------------------------------------------------------
+
+The benchmark control block is the strongest single piece of evidence in
+the audit. QQQ's price series is identical between the two runs, so the
+move from Sharpe 0.6375 to 0.7683 cannot come from the benchmark. It comes
+entirely from sampling the equity curve on trading days rather than
+padding it to calendar days while still annualising with 252. The observed
+ratio 1.2052 against the closed form sqrt(365/252) = 1.2036 matches to
+0.13%.
+
+The step table is cumulative: each row's delta is marginal given every
+correction above it, not that bias measured in isolation against the
+untouched legacy baseline. The engine is path-dependent, since position
+size follows the running account value.
