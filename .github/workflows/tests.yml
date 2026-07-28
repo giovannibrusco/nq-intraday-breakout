@@ -1,0 +1,38 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest supported (pyproject requires-python) and current stable.
+        python-version: ['3.10', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package and test dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run test suite
+        # The suite is self-contained: it builds its own synthetic bars and
+        # touches no market data, so it runs identically here and locally.
+        run: python -m pytest -v
+
+      - name: Check the bias attribution tool runs end to end
+        # Without --nq it uses deterministic synthetic bars. This does not
+        # reproduce the published numbers (that needs the private CSVs) but
+        # it does guarantee the tool itself never silently breaks.
+        run: python tools/bias_attribution.py

@@ -6,8 +6,8 @@ backtest as for the strategy itself: the same rules on the same data produce
 two materially different result sets depending on simulation conventions, and
 most of this README is about which conventions, and why.
 
+[![tests](https://github.com/giovannibrusco/nq-intraday-breakout/actions/workflows/tests.yml/badge.svg)](https://github.com/giovannibrusco/nq-intraday-breakout/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-72%20passing-brightgreen)
 ![Licence](https://img.shields.io/badge/licence-MIT-blue)
 
 ---
@@ -177,7 +177,7 @@ src/nq_breakout/
     metrics.py       Sharpe, CAGR, drawdown, volatility, t-stat
     diagnostics.py   feed checks: timezone, roll splicing, gap exposure
     plots.py         equity, drawdown and per-trade figures
-tests/               72 tests, no market data required
+tests/               test suite; no market data required
 tools/
     bias_attribution.py   runs both engines flag by flag
 docs/
@@ -198,7 +198,7 @@ cd nq-intraday-breakout
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,notebook]"
 
-python -m pytest          # 72 tests, no data files needed
+python -m pytest          # full suite; no data files needed
 ```
 
 With market data in place (see [data/README.md](data/README.md)):
