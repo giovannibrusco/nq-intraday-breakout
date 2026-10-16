@@ -70,14 +70,12 @@ Properties the code relies on:
   whether large gaps cluster in Mar/Jun/Sep/Dec. Note that a *negative*
   result is only absence of evidence — it does not prove the series is
   adjusted. If it is not, multi-day longs book roll basis as PnL.
-- **Bar timestamps: start of bar assumed, not confirmed.** The engine
-  reads `08:30` as the minute 08:30–08:31. MultiCharts exports stamp bars
-  at their end (`08:30` = 08:29–08:30), and this file is a MultiCharts
-  export, so it may be end-stamped. Check the first bar after the 17:00
-  reopen: `17:00` means start-stamped, `17:01` means end-stamped. In the
-  second case load it with `load_nq_1min(path, stamped_at='end')`.
-  `run_data_diagnostics` runs this check. The published results used the
-  start-of-bar reading.
+- **Bar timestamps: end of bar.** Like every MultiCharts export, the file
+  stamps each minute at its end (`08:30` = 08:29–08:30): the first bar
+  after the 17:00 reopen is `17:01` on 2,509 of 2,510 sessions. Load it
+  with `load_nq_1min(path, stamped_at='end')`. `run_data_diagnostics`
+  runs this check on any file. The published results predate this
+  finding and used the start-of-bar reading.
 - Period behind the published results: **2015-03 to 2025-04**, ~3.4M
   one-minute rows resampling to ~693k five-minute bars.
 

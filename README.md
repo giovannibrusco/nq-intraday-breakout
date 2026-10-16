@@ -257,8 +257,8 @@ before trusting results, are documented in [data/README.md](data/README.md).
 
 The vendor is not currently recorded and is marked as an open item in that
 file. Results that cannot be traced to a named feed cannot be independently
-checked. Whether the file's timestamps mark the start or the end of each
-minute is also not yet confirmed; see the bar timestamp item under
+checked. The file's timestamps mark the *end* of each minute, which the
+published figures did not yet account for; see the bar timestamp item under
 [Limitations](#limitations).
 
 ## Limitations
@@ -267,15 +267,15 @@ minute is also not yet confirmed; see the bar timestamp item under
   [the comparison table](#relation-to-the-multicharts-strategy)), and only
   about 60% of entries coincide. The results here should not be read as the
   track record of the strategy that runs in MultiCharts.
-- **Bar timestamps may be off by one minute.** The engine treats each
-  1-minute timestamp as the start of its bar. MultiCharts exports stamp bars
-  at their end, so if the data file is such an export, every 5-minute bar is
-  shifted by a minute and the opening range includes the 08:29–08:30 minute.
-  The published figures were produced without correcting for this.
-  `run_data_diagnostics` now checks it (first bar after the 17:00 reopen:
-  17:00 or 17:01), and `stamped_at='end'` corrects it. On another copy of the
-  MultiCharts history, correcting the shift moved this engine's net PnL per
-  contract from 179.7 to 170.5 USD.
+- **The published figures use bars shifted by one minute.** The data file
+  is stamped at bar end (MultiCharts convention): the first bar after the
+  17:00 reopen is written 17:01 on 2,509 of 2,510 sessions. The engine read
+  each timestamp as the start of its bar, so every 5-minute bar is off by a
+  minute and the opening range includes the 08:29–08:30 minute. The figures
+  in this README have not yet been regenerated with the correction
+  (`stamped_at='end'`). On another copy of the MultiCharts history,
+  correcting the shift moved this engine's net PnL per contract from 179.7
+  to 170.5 USD, so expect the corrected figures to be somewhat lower.
 - **The sample ends in April 2025.** Nothing after that date is reported here.
 - **No partial fills.** Every order is filled complete at a single price. At
   the ~40-contract average size of the 2% regime this is optimistic.

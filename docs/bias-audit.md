@@ -11,8 +11,8 @@ in the headline numbers.
 > README's comparison table). "Corrected" below means corrected simulation
 > conventions for *this* engine's rules, not agreement with MultiCharts.
 > Since this audit was written, the MultiCharts code has settled one open
-> question, the entry fill (it uses a stop order), and raised a new one,
-> the bar timestamp convention (item #13).
+> question, the entry fill (it uses a stop order), and exposed a new
+> defect, a one-minute bar timestamp shift (item #13).
 
 | | Legacy (original notebook) | Corrected |
 |---|---:|---:|
@@ -322,7 +322,7 @@ smooth equity curve produces `std ~ 1e-16`, not `0`, so Sharpe returned
 published number** — a real daily return series has `std ~ 1e-2` — and a
 test now covers it.
 
-### 13. Bar timestamps possibly off by one minute — OPEN, found after this audit
+### 13. Bar timestamps off by one minute — CONFIRMED, figures not yet regenerated
 
 **Where:** `load_nq_1min` and `resample_5min` treat each 1-minute
 timestamp as the *start* of its bar. MultiCharts exports stamp bars at
@@ -333,9 +333,11 @@ after the 17:00 reopen is written `17:01`.
 built from minutes shifted by one. The opening range then includes the
 08:29–08:30 minute, before the cash open, and leaves out 09:59–10:00.
 
-**Status:** not yet checked on the file behind the published numbers.
-`run_data_diagnostics` now reports which convention a file appears to use
-(the first bar after the halt, 17:00 or 17:01), and
+**Status:** confirmed on the file behind the published numbers: the first
+bar after the 17:00 reopen is stamped 17:01 on 2,509 of 2,510 sessions.
+The figures in this document have not yet been regenerated with the
+correction. `run_data_diagnostics` now reports which convention a file
+appears to use (the first bar after the halt, 17:00 or 17:01), and
 `load_nq_1min(path, stamped_at='end')` corrects it. On another copy of
 the MultiCharts history, correcting the shift moved this engine's net PnL
 per contract from $179.7 to $170.5. The published figures were produced
