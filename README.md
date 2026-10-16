@@ -65,6 +65,11 @@ settled — see [What moves the number](#what-moves-the-number).
 | Corrected conventions, stop fill | 1.02 | 14.12% | 16.82% | 3.24 | 14.26% | 2,800,810 | 1,725 |
 | QQQ buy & hold | 0.77 | 22.11% | 35.12% | — | 15.61% | — | — |
 
+The legacy row keeps the original calendar-day equity grid, which
+understates Sharpe and volatility by a factor of `sqrt(252/365)`; on that
+same grid QQQ scores 0.64, not 0.77. The other rows and the benchmark use
+trading days. See [What moves the number](#what-moves-the-number).
+
 The 2% risk regime doubles position size without changing the trade list, so
 per-contract economics and the t-stat are identical to the 1% regime:
 
