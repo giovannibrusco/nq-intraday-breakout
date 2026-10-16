@@ -6,7 +6,7 @@ strategy changed. This document lists every difference, says which are
 genuine defects and which are modelling choices, and attributes the change
 in the headline numbers.
 
-| | Legacy (published on `main`) | Corrected |
+| | Legacy (original notebook) | Corrected |
 |---|---:|---:|
 | Net PnL, 1% risk | $3,287,392 | $2,800,810 |
 | Trades | 1,728 | 1,725 |
@@ -97,8 +97,8 @@ consequences worth naming rather than glossing over:
   figure* attached to it is a chain effect, not the isolated cost of
   those 10 fills.
 - **`CME trading-day mapping` is not the minor, derivative item this
-  document originally called it.** It moves $599,885 — the second-largest
-  single step after gap-aware fills, larger than the entire net effect of
+  document originally called it.** It moves $599,885 — the largest
+  single step in the whole chain, larger than the entire net effect of
   every correction combined. See the correction to item #9 below.
 
 ### 1. Equity curve padded to calendar days — CONFIRMED, quantified exactly
@@ -126,7 +126,7 @@ Both match the closed form to within 0.13%. The entire benchmark
 improvement is this one arithmetic artefact and nothing else.
 
 **Confidence: certain.** This is the single largest driver of the Sharpe
-change, and it makes the strategy look *better*, not worse.
+change, and correcting it makes the strategy look *better*, not worse.
 
 ### 2. Slippage charged on one side, not two — CONFIRMED, exact
 
@@ -153,9 +153,10 @@ assume, not a bug that was fixed. It should be presented as such.
 
 **Combined effect of #2 and #3:** round-turn cost $9.20 → $20.00, a flat
 **$10.80 per contract per round turn**. Verified analytically and pinned
-by a test (`test_cost_delta_per_contract_is_exactly_10_80`). Against the
-published run that is roughly 1,728 × 9.37 × $10.80 ≈ **$175k**, about 36%
-of the total PnL drop.
+by a test (`test_cost_delta_per_contract_is_exactly_10_80`). On the real
+feed this step costs **$267,587** (row 2 of the step table) — more than
+the naive trades × contracts × $10.80 estimate, because lower PnL also
+shrinks every later position through the equity-based sizing.
 
 ### 4. Stops and targets filled at the level through gaps — CONFIRMED, direction is NOT one-sided (correction to this document)
 
@@ -181,7 +182,7 @@ Which effect dominates is an empirical question about how often the
 market gaps through a stop versus through a target in this sample — not
 something derivable from the code. On the real 10-year feed the target
 side won: turning gap-aware fills on **raised** net PnL by $227,300 (row
-2 of the step table). The synthetic-bars run in this repository's test
+3 of the step table). The synthetic-bars run in this repository's test
 suite showed the opposite sign (−$287k) purely because that generator is
 an unconditioned random walk with no drift asymmetry between stop-side
 and target-side gaps — a reminder that the synthetic numbers are for
@@ -278,7 +279,7 @@ convention) instead of their plain calendar date.
 **This document previously dismissed this as a minor consequence of #5
 with "no independent economic content." That was wrong.** On the real
 feed, this single step moves net PnL by **+$599,885** and Sharpe by
-**+0.085** — the second-largest step in the whole chain, bigger than the
+**+0.085** — the largest step in the whole chain, bigger than the
 combined net effect of every other correction put together. It changes
 which trading day a late-evening bar's entries, exits and day-counts get
 attributed to, which shifts `max_long_hold_days` exit timing and the
