@@ -6,6 +6,14 @@ strategy changed. This document lists every difference, says which are
 genuine defects and which are modelling choices, and attributes the change
 in the headline numbers.
 
+> **Scope.** Both result sets come from this repository's engine, which is a
+> simplified variant of the MultiCharts strategy, not a port of it (see the
+> README's comparison table). "Corrected" below means corrected simulation
+> conventions for *this* engine's rules, not agreement with MultiCharts.
+> Since this audit was written, the MultiCharts code has settled one open
+> question, the entry fill (it uses a stop order), and exposed a new
+> defect, a one-minute bar timestamp shift (item #13).
+
 | | Legacy (original notebook) | Corrected |
 |---|---:|---:|
 | Net PnL, 1% risk | $3,287,392 | $2,800,810 |
@@ -50,9 +58,12 @@ Reading down the table:
   per-step table below, where the biggest single steps move six figures.
 - **The entry convention was worth exactly −$522,990.00 (−15.7%)**,
   likewise read directly off the run. Switching from filling at the
-  breakout bar's close to filling at the breakout level is a *modelling
-  choice*, not a defect fix, and it accounts for more than 100% of the
-  drop in the headline number.
+  breakout bar's close to filling at the breakout level is a change of
+  fill convention, not a defect fix, and it accounts for more than 100%
+  of the drop in the headline number. The stop fill is the convention the
+  MultiCharts strategy uses (`buy next bar at ... stop`), so it is the
+  right default; but the drop comes from that choice, not from the bias
+  corrections.
 
 This matters for how the change should be described. "We found several
 biases and the number went down" is not what the data shows: the
@@ -266,10 +277,11 @@ timing remains reachable via `SimFlags(max_hold_exit_at_close=False)`
 because reproducing the published legacy numbers requires it. Pinned by
 `test_max_hold_exits_at_session_close_of_fifth_day`.
 
-**Caveat that keeps this open in principle:** the argument above is from
-the rule as *written in the README*. If the original MultiCharts code
-implemented the earlier exit deliberately, that source is the authority,
-not the prose — which is one more reason recovering it is Roadmap item 1.
+**What the MultiCharts code says:** it holds longs for up to *eight*
+sessions, not five, so neither five-session variant matches it. The fix
+above is right for the rule as this engine states it; matching MultiCharts
+needs `max_long_hold_days=8` together with the other rule differences
+listed in the README.
 
 ### 9. Trading-day mapping — CHANGED BEHAVIOUR, materially large (correction to this document)
 
@@ -309,6 +321,28 @@ smooth equity curve produces `std ~ 1e-16`, not `0`, so Sharpe returned
 ~1.2e14 instead of `NaN`. Fixed with a `1e-12` floor. **Cannot affect any
 published number** — a real daily return series has `std ~ 1e-2` — and a
 test now covers it.
+
+### 13. Bar timestamps off by one minute — CONFIRMED, figures not yet regenerated
+
+**Where:** `load_nq_1min` and `resample_5min` treat each 1-minute
+timestamp as the *start* of its bar. MultiCharts exports stamp bars at
+their *end*: the minute 08:29–08:30 is written `08:30`, and the first bar
+after the 17:00 reopen is written `17:01`.
+
+**What:** if the data file is stamped at bar end, every 5-minute bar is
+built from minutes shifted by one. The opening range then includes the
+08:29–08:30 minute, before the cash open, and leaves out 09:59–10:00.
+
+**Status:** confirmed on the file behind the published numbers: the first
+bar after the 17:00 reopen is stamped 17:01 on 2,509 of 2,510 sessions.
+The figures in this document have not yet been regenerated with the
+correction. `run_data_diagnostics` now reports which convention a file
+appears to use (the first bar after the halt, 17:00 or 17:01), and
+`load_nq_1min(path, stamped_at='end')` corrects it. On another copy of
+the MultiCharts history, correcting the shift moved this engine's net PnL
+per contract from $179.7 to $170.5. The published figures were produced
+with `stamped_at='start'`, and the reproduction check below asserts them
+under that setting only.
 
 ---
 
@@ -354,6 +388,10 @@ published numbers. Expect:
 [MATCH] corrected net PnL    got 2,800,810.0 | published 2,800,810.0
 [MATCH] corrected Sharpe     got     1.02 | published     1.02
 ```
+
+Add `--stamped-at end` to run the whole chain on an end-stamped file
+(item #13); the reproduction check is then skipped, since the published
+numbers were produced with start-stamped bars.
 
 Run without `--nq`/`--qqq` to use deterministic synthetic bars instead.
 Synthetic results are useful only for verifying *mechanism and sign

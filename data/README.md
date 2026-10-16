@@ -63,10 +63,19 @@ Properties the code relies on:
 - **Coverage: near-continuous Globex**, ~1,100 one-minute bars per session.
   The engine walks overnight bars, so a day-session-only file will produce
   different (and more optimistic) results.
-- **Continuity: assumed back-adjusted.** The roll diagnostic reports
+- **Continuity: back-adjusted.** Confirmed on another copy of the
+  MultiCharts history, where the 2010 series is about 2.2 times the traded
+  price, so point differences are right but percentage-of-price thresholds
+  are distorted early in the sample. The roll diagnostic reports
   whether large gaps cluster in Mar/Jun/Sep/Dec. Note that a *negative*
   result is only absence of evidence — it does not prove the series is
   adjusted. If it is not, multi-day longs book roll basis as PnL.
+- **Bar timestamps: end of bar.** Like every MultiCharts export, the file
+  stamps each minute at its end (`08:30` = 08:29–08:30): the first bar
+  after the 17:00 reopen is `17:01` on 2,509 of 2,510 sessions. Load it
+  with `load_nq_1min(path, stamped_at='end')`. `run_data_diagnostics`
+  runs this check on any file. The published results predate this
+  finding and used the start-of-bar reading.
 - Period behind the published results: **2015-03 to 2025-04**, ~3.4M
   one-minute rows resampling to ~693k five-minute bars.
 
@@ -92,5 +101,6 @@ from nq_breakout import load_nq_1min, run_data_diagnostics
 run_data_diagnostics(load_nq_1min('Data/nq-10y-1min.csv'))
 ```
 
-Read that output before any metric. It checks the timezone signature, roll
-splicing, and how often sessions gap more than the stop distance.
+Read that output before any metric. It checks the timezone signature, the
+bar timestamp convention, roll splicing, and how often sessions gap more
+than the stop distance.

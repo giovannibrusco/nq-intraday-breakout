@@ -118,11 +118,14 @@ def main() -> int:
     ap.add_argument('--nq', type=Path, help='1-minute NQ csv (omit for synthetic bars)')
     ap.add_argument('--qqq', type=Path, help='daily QQQ csv (optional)')
     ap.add_argument('--risk', type=float, default=0.01)
+    ap.add_argument('--stamped-at', choices=('start', 'end'), default='start',
+                    help="which edge of each 1-minute bar the file's timestamps mark "
+                         '(published numbers: start)')
     args = ap.parse_args()
 
     if args.nq:
         print(f'Loading {args.nq} ...')
-        df_5min = resample_5min(load_nq_1min(args.nq))
+        df_5min = resample_5min(load_nq_1min(args.nq, stamped_at=args.stamped_at))
         source = str(args.nq)
     else:
         from tests.synthetic import make_globex_feed
@@ -163,7 +166,7 @@ def main() -> int:
               f'maxDD {s["max_dd_pct"]:.2%} | CAGR {s["cagr"]:.2%}')
 
     reproduction_failed = False
-    if args.nq and abs(args.risk - 0.01) < 1e-12:
+    if args.nq and abs(args.risk - 0.01) < 1e-12 and args.stamped_at == 'start':
         print('\n=== Reproduction check against the published numbers ===')
         mismatches = []
         for name, got, want, matches in published_endpoint_checks(first, last):
@@ -177,7 +180,8 @@ def main() -> int:
             reproduction_failed = True
     elif args.nq:
         print(f'\n=== Reproduction check skipped: published endpoints use '
-              f'--risk 0.01, got {args.risk:g} ===')
+              f'--risk 0.01 --stamped-at start, got --risk {args.risk:g} '
+              f'--stamped-at {args.stamped_at} ===')
 
     if args.qqq:
         from nq_breakout import align_benchmark

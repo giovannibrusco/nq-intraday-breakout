@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from nq_breakout import load_nq_1min, load_qqq, resample_5min
+from nq_breakout import load_nq_1min, load_qqq, resample_5min, run_data_diagnostics
 
 
 @pytest.fixture
@@ -31,6 +31,50 @@ def test_load_nq_parses_day_first_dates(nq_csv):
     assert list(df.columns) == ['date', 'open', 'high', 'low', 'close', 'totalvolume']
     assert df['date'].iloc[0] == pd.Timestamp('2023-01-02 09:00')
     assert df['date'].is_monotonic_increasing
+
+
+def test_load_nq_end_stamped_moves_each_bar_back_one_minute(nq_csv):
+    start = load_nq_1min(nq_csv)
+    end = load_nq_1min(nq_csv, stamped_at='end')
+    assert (start['date'] - end['date'] == pd.Timedelta(minutes=1)).all()
+    pd.testing.assert_frame_equal(start.drop(columns='date'), end.drop(columns='date'))
+
+
+def test_end_stamped_file_regroups_five_minute_buckets(nq_csv):
+    # Stamps 09:00..09:11 written at bar end are minutes 08:59..09:10, so
+    # the first minute now falls in the 08:55 bucket on its own.
+    five = resample_5min(load_nq_1min(nq_csv, stamped_at='end'))
+    assert five['date'].tolist() == [pd.Timestamp('2023-01-02 08:55'),
+                                     pd.Timestamp('2023-01-02 09:00'),
+                                     pd.Timestamp('2023-01-02 09:05'),
+                                     pd.Timestamp('2023-01-02 09:10')]
+
+
+def test_load_nq_rejects_unknown_stamp_convention(nq_csv):
+    with pytest.raises(ValueError, match='stamped_at'):
+        load_nq_1min(nq_csv, stamped_at='middle')
+
+
+def _reopen_feed(first_minute: int) -> pd.DataFrame:
+    """Three sessions of 1-minute bars around the cash open and the 17:00 reopen."""
+    stamps = []
+    for day in pd.date_range('2023-01-02', periods=3, freq='D'):
+        stamps += list(pd.date_range(day + pd.Timedelta(hours=8), periods=60, freq='1min'))
+        stamps += list(pd.date_range(day + pd.Timedelta(hours=17, minutes=first_minute),
+                                     periods=10, freq='1min'))
+    n = len(stamps)
+    return pd.DataFrame({'date': stamps, 'open': [100.0] * n, 'high': [101.0] * n,
+                         'low': [99.0] * n, 'close': [100.0] * n,
+                         'totalvolume': [10] * n})
+
+
+@pytest.mark.parametrize('first_minute, expected', [
+    (0, 'stamped at their START'),
+    (1, "stamped_at='end'"),
+])
+def test_diagnostics_reports_bar_stamp_convention(capsys, first_minute, expected):
+    run_data_diagnostics(_reopen_feed(first_minute))
+    assert expected in capsys.readouterr().out
 
 
 def test_load_nq_rejects_missing_columns(tmp_path):

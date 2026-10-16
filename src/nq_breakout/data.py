@@ -12,19 +12,29 @@ import pandas as pd
 __all__ = ['load_nq_1min', 'resample_5min', 'load_qqq']
 
 
-def load_nq_1min(path) -> pd.DataFrame:
+def load_nq_1min(path, stamped_at: str = 'start') -> pd.DataFrame:
     """Load the raw 1-minute NQ CSV.
 
     Expected columns: ``Date`` (``%d/%m/%Y``), ``Time`` (``%H:%M:%S``),
     ``Open``, ``High``, ``Low``, ``Close``, ``TotalVolume``.
 
-    Timestamps are taken as-is with no timezone attached. The feed used
-    for the published results is stamped in **US/Central** time, not
-    Eastern — see ``diagnostics.run_data_diagnostics``, which detects this
-    from the cash-open volume signature.
+    Timestamps carry no timezone. The feed used for the published results
+    is stamped in **US/Central** time, not Eastern — see
+    ``diagnostics.run_data_diagnostics``, which detects this from the
+    cash-open volume signature.
+
+    ``stamped_at`` says which edge of the minute the file's timestamps
+    mark. Everything downstream assumes ``'start'`` (bar ``08:30`` covers
+    08:30–08:31). MultiCharts exports stamp bars at their *end* (the bar
+    covering 08:29–08:30 is written as ``08:30``); pass ``'end'`` for such
+    a file and every timestamp is moved back one minute so it labels the
+    bar's start. ``run_data_diagnostics`` reports which convention a file
+    appears to use. The published results were produced with ``'start'``.
 
     ``pandas.read_csv`` handles ``.csv`` and ``.csv.gz`` transparently.
     """
+    if stamped_at not in ('start', 'end'):
+        raise ValueError(f"stamped_at must be 'start' or 'end', got {stamped_at!r}")
     raw = pd.read_csv(path)
     missing = {'Date', 'Time', 'Open', 'High', 'Low', 'Close', 'TotalVolume'} - set(raw.columns)
     if missing:
@@ -33,6 +43,8 @@ def load_nq_1min(path) -> pd.DataFrame:
             'See data/README.md for the expected schema.'
         )
     raw['date'] = pd.to_datetime(raw['Date'] + ' ' + raw['Time'], format='%d/%m/%Y %H:%M:%S')
+    if stamped_at == 'end':
+        raw['date'] -= pd.Timedelta(minutes=1)
     raw = raw.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low',
                               'Close': 'close', 'TotalVolume': 'totalvolume'})
     return raw[['date', 'open', 'high', 'low', 'close', 'totalvolume']].sort_values('date')

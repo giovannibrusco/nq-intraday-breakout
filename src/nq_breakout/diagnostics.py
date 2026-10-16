@@ -17,7 +17,7 @@ __all__ = ['run_data_diagnostics']
 
 
 def run_data_diagnostics(df_1min: pd.DataFrame, config: Config = Config()) -> None:
-    """Print sanity checks on the raw feed: timezone, roll gaps, overnight gaps.
+    """Print sanity checks on the raw feed: timezone, bar stamps, roll and overnight gaps.
 
     The session times in :class:`Config` only mean what the README says
     they mean if the feed is stamped in US/Central. The continuous
@@ -48,6 +48,31 @@ def run_data_diagnostics(df_1min: pd.DataFrame, config: Config = Config()) -> No
               'opening-range one. Shift the session times before trusting any result.')
     else:
         print(f'WARNING: unexpected open at {likely_open}; inspect the feed manually.')
+
+    # --- bar timestamp convention: the session reopens at 17:00 CT after
+    # the maintenance halt. A start-stamped file's first bar is 17:00; an
+    # end-stamped one (MultiCharts exports) writes that same minute as 17:01.
+    reopen = df[(df['time'] >= dt.time(17, 0)) & (df['time'] < dt.time(17, 5))]
+    first_after_halt = reopen.groupby('day')['time'].min()
+    print('\n== Bar timestamp check ==')
+    if first_after_halt.empty:
+        print('No bars between 17:00 and 17:05; cannot tell whether timestamps '
+              'mark the start or the end of each bar.')
+    else:
+        modal = first_after_halt.mode().iloc[0]
+        share = (first_after_halt == modal).mean()
+        print(f'First bar after the maintenance halt is most often {modal} '
+              f'({share:.0%} of {len(first_after_halt)} sessions).')
+        if modal == dt.time(17, 0):
+            print('Consistent with bars stamped at their START, which is what the '
+                  'engine assumes. OK.')
+        elif modal == dt.time(17, 1):
+            print("WARNING: bars appear to be stamped at their END (MultiCharts "
+                  "convention). Reload with load_nq_1min(path, stamped_at='end'), "
+                  'otherwise every 5-minute bar is shifted by one minute and the '
+                  'opening range includes the 08:29-08:30 minute.')
+        else:
+            print('WARNING: unexpected first bar after the halt; inspect the feed manually.')
 
     # --- roll / splice check: close->open jumps far beyond the typical gap.
     daily = df.groupby('day').agg(first_open=('open', 'first'), last_close=('close', 'last'))
