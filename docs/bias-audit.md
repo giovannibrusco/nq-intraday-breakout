@@ -13,7 +13,8 @@ in the headline numbers.
 > Since this audit was first written, the MultiCharts code has settled one
 > open question, the entry fill (it uses a stop order), and exposed a new
 > defect, a one-minute bar timestamp shift (item #13). The shift is now
-> corrected, and every figure below includes the correction.
+> corrected, and every figure below includes the correction except the
+> legacy row, which deliberately reproduces the original notebook.
 
 | | Legacy (original notebook) | Corrected |
 |---|---:|---:|

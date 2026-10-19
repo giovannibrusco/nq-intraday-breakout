@@ -75,7 +75,9 @@ Properties the code relies on:
   after the 17:00 reopen is `17:01` on 2,509 of 2,510 sessions. Load it
   with `load_nq_1min(path, stamped_at='end')`. `run_data_diagnostics`
   runs this check on any file. All published results use the end-of-bar
-  reading.
+  reading, with one deliberate exception: the first row of the attribution
+  chain reads the file as start-stamped, because it reproduces the original
+  notebook (1,728 trades, $3,287,392).
 - Period behind the published results: **2015-03 to 2025-04**, ~3.4M
   one-minute rows resampling to ~689k five-minute bars (end-of-bar reading).
 

@@ -282,7 +282,9 @@ before trusting results, are documented in [data/README.md](data/README.md).
 The vendor is not currently recorded and is marked as an open item in that
 file. Results that cannot be traced to a named feed cannot be independently
 checked. The file's timestamps mark the *end* of each minute, and every
-figure in this README is computed with that reading.
+figure in this README is computed with that reading except the first row of
+the [attribution chain](#what-moves-the-number), which deliberately
+reproduces the original notebook's start-of-bar reading.
 
 ## Limitations
 
