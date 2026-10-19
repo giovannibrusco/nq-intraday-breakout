@@ -15,7 +15,7 @@ What the file itself establishes:
   generic vendor one. This is consistent with the strategy having been
   written in MultiCharts in 2022.
 - **Timestamps: US/Central**, established from the data by
-  `run_data_diagnostics` (cash-open volume spike at 08:30, ×6.4 versus the
+  `run_data_diagnostics` (cash-open volume spike at 08:30, ×6.1 versus the
   preceding half hour; maintenance halt at 16:00–17:00).
 - **Coverage: near-continuous Globex**, ~1,098 one-minute bars per session.
 - **Contract: front-month continuous**, and consistent with back-adjustment
@@ -74,10 +74,12 @@ Properties the code relies on:
   stamps each minute at its end (`08:30` = 08:29–08:30): the first bar
   after the 17:00 reopen is `17:01` on 2,509 of 2,510 sessions. Load it
   with `load_nq_1min(path, stamped_at='end')`. `run_data_diagnostics`
-  runs this check on any file. The published results predate this
-  finding and used the start-of-bar reading.
+  runs this check on any file. All published results use the end-of-bar
+  reading, with one deliberate exception: the first row of the attribution
+  chain reads the file as start-stamped, because it reproduces the original
+  notebook (1,728 trades, $3,287,392).
 - Period behind the published results: **2015-03 to 2025-04**, ~3.4M
-  one-minute rows resampling to ~693k five-minute bars.
+  one-minute rows resampling to ~689k five-minute bars (end-of-bar reading).
 
 `load_nq_1min` accepts `.csv` and `.csv.gz`.
 
