@@ -10,53 +10,59 @@ in the headline numbers.
 > simplified variant of the MultiCharts strategy, not a port of it (see the
 > README's comparison table). "Corrected" below means corrected simulation
 > conventions for *this* engine's rules, not agreement with MultiCharts.
-> Since this audit was written, the MultiCharts code has settled one open
-> question, the entry fill (it uses a stop order), and exposed a new
-> defect, a one-minute bar timestamp shift (item #13).
+> Since this audit was first written, the MultiCharts code has settled one
+> open question, the entry fill (it uses a stop order), and exposed a new
+> defect, a one-minute bar timestamp shift (item #13). The shift is now
+> corrected, and every figure below includes the correction.
 
 | | Legacy (original notebook) | Corrected |
 |---|---:|---:|
-| Net PnL, 1% risk | $3,287,392 | $2,800,810 |
-| Trades | 1,728 | 1,725 |
-| PnL / contract | $191.33 | $176.94 |
-| Sharpe | 0.95 | 1.02 |
-| Volatility | 11.25% | 14.12% |
-| Max drawdown | 15.06% | 16.82% |
+| Net PnL, 1% risk | $3,287,392 | $2,744,225 |
+| Trades | 1,728 | 1,724 |
+| PnL / contract | $191.33 | $176.08 |
+| Sharpe | 0.95 | 1.00 |
+| Volatility | 11.25% | 14.18% |
+| Max drawdown | 15.06% | 16.68% |
 | QQQ benchmark Sharpe | 0.64 | 0.77 |
 
 Both sets are internally consistent: every figure in each README matches
 the embedded outputs of the notebook that produced it.
 
-**Verified end to end on the real 10-year feed** (693,117 five-minute
-bars): `tools/bias_attribution.py --nq Data/nq-10y-1min.csv --qqq
+**Verified end to end on the real 10-year feed**:
+`tools/bias_attribution.py --nq Data/nq-10y-1min.csv --qqq
 Data/QQQ_daily.csv` reproduces both endpoints exactly —
-1,728 trades / $3,287,392.20 / Sharpe 0.9480 (legacy) and
-1,725 trades / $2,800,810.00 / Sharpe 1.0165→1.02 (corrected) — to the
-cent and to two Sharpe decimals. This is not an estimate; every number in
-the tables below (except the "not a bias" section, which was always
-data-derived) now comes from that run.
+1,728 trades / $3,287,392.20 / Sharpe 0.9480 (legacy, 693,117 five-minute
+bars read as start-stamped, as the original notebook did) and
+1,724 trades / $2,744,225.00 / Sharpe 1.0022→1.00 (corrected, 688,976
+five-minute bars read as end-stamped) — to the cent and to two Sharpe
+decimals. This is not an estimate; every number in the tables below
+(except the "not a bias" section, which was always data-derived) comes
+from that run.
 
 ---
 
 ## The headline result: what actually moved the number
 
-Net PnL fell 14.8% ($486,582). Almost none of that is bias correction —
+Net PnL fell 16.5% ($543,167). Little of that is bias correction —
 confirmed on the real feed, not inferred from two endpoints:
 
 | Configuration | Net PnL | Trades | Sharpe |
 |---|---:|---:|---:|
-| Close-fill entries, legacy conventions (`main`) | $3,287,392.20 | 1,728 | 0.95 |
-| Close-fill entries, **all corrections applied** | $3,323,800.00 | 1,736 | — |
-| Stop-fill entries, all corrections applied | $2,800,810.00 | 1,725 | 1.02 |
+| Close-fill entries, legacy conventions, start-stamped bars (as published) | $3,287,392.20 | 1,728 | 0.95 |
+| Close-fill entries, legacy conventions, end-stamped bars | $3,646,837.40 | 1,735 | — |
+| Close-fill entries, **all corrections applied** | $3,437,125.00 | 1,734 | — |
+| Stop-fill entries, all corrections applied | $2,744,225.00 | 1,724 | 1.00 |
 
 Reading down the table:
 
-- **All eleven bias corrections together were worth +$36,407.80 (+1.1%) on
-  PnL**, exact, read directly off the attribution run
-  (`3,323,800.00 − 3,287,392.20`). They netted small because they point in
+- **Reading the bars correctly was worth +$359,445.20 (+10.9%)** on the
+  legacy conventions (item #13).
+- **The eleven bias corrections together were worth −$209,712.40 (−5.8%)
+  on PnL**, exact, read directly off the attribution run
+  (`3,437,125.00 − 3,646,837.40`). They netted small because they point in
   both directions, not because each one is individually small — see the
   per-step table below, where the biggest single steps move six figures.
-- **The entry convention was worth exactly −$522,990.00 (−15.7%)**,
+- **The entry convention was worth exactly −$692,900.00 (−20.2%)**,
   likewise read directly off the run. Switching from filling at the
   breakout bar's close to filling at the breakout level is a change of
   fill convention, not a defect fix, and it accounts for more than 100%
@@ -78,39 +84,46 @@ the marginal effect of that one step.
 | Step | Trades | Δ trades | Net PnL | Δ net PnL | Sharpe | Δ Sharpe |
 |---|---:|---:|---:|---:|---:|---:|
 | LEGACY (all original conventions) | 1,728 | — | 3,287,392.20 | — | 0.9480 | — |
-| cost model ($9.20 → $20.00 RT) | 1,728 | 0 | 3,019,805.00 | −267,587.20 | 0.9104 | −0.0376 |
-| gap-aware fills | 1,728 | 0 | 3,247,105.00 | +227,300.00 | 0.8732 | −0.0372 |
-| scan overnight bars | 1,819 | +91 | 2,733,820.00 | −513,285.00 | 0.8552 | −0.0180 |
-| exclusive window end | 1,852 | +33 | 2,660,005.00 | −73,815.00 | 0.8361 | −0.0191 |
-| block last-bar entry | 1,842 | −10 | 2,582,100.00 | −77,905.00 | 0.8299 | −0.0063 |
-| max-hold exit at session close | 1,768 | −74 | 2,723,915.00 | +141,815.00 | 0.8418 | +0.0120 |
-| CME trading-day mapping | 1,736 | −32 | 3,323,800.00 | +599,885.00 | 0.9268 | +0.0850 |
-| min-1-contract / prev-session floor | 1,736 | 0 | 3,323,800.00 | 0.00 | 0.9268 | 0.0000 |
-| daily mark-to-market | 1,736 | 0 | 3,323,800.00 | 0.00 | 0.9193 | −0.0075 |
-| entry_mode: close → stop | 1,725 | −11 | 2,800,810.00 | −522,990.00 | 0.8432 | −0.0761 |
-| drop calendar padding | 1,725 | 0 | 2,800,810.00 | 0.00 | 1.0165 | +0.1733 |
+| bar timestamps (start → end of bar) | 1,735 | +7 | 3,646,837.40 | +359,445.20 | 0.9979 | +0.0498 |
+| cost model ($9.20 → $20.00 RT) | 1,735 | 0 | 3,296,140.00 | −350,697.40 | 0.9482 | −0.0496 |
+| gap-aware fills | 1,735 | 0 | 3,555,630.00 | +259,490.00 | 0.9152 | −0.0330 |
+| scan overnight bars | 1,822 | +87 | 2,684,775.00 | −870,855.00 | 0.8476 | −0.0676 |
+| exclusive window end | 1,850 | +28 | 2,882,040.00 | +197,265.00 | 0.8694 | +0.0218 |
+| block last-bar entry | 1,836 | −14 | 2,671,270.00 | −210,770.00 | 0.8407 | −0.0286 |
+| max-hold exit at session close | 1,761 | −75 | 2,911,530.00 | +240,260.00 | 0.8712 | +0.0305 |
+| CME trading-day mapping | 1,734 | −27 | 3,437,125.00 | +525,595.00 | 0.9413 | +0.0701 |
+| min-1-contract / prev-session floor | 1,734 | 0 | 3,437,125.00 | 0.00 | 0.9413 | 0.0000 |
+| daily mark-to-market | 1,734 | 0 | 3,437,125.00 | 0.00 | 0.9333 | −0.0080 |
+| entry_mode: close → stop | 1,724 | −10 | 2,744,225.00 | −692,900.00 | 0.8312 | −0.1021 |
+| drop calendar padding | 1,724 | 0 | 2,744,225.00 | 0.00 | 1.0022 | +0.1710 |
 
 **Caveat on reading individual rows.** The steps are applied cumulatively,
 in this order, so a row's Δ is the marginal effect *given every correction
 above it already applied* — not that bias's isolated effect against the
 untouched legacy baseline. The engine is also path-dependent (position
 sizing depends on the running account value, so one changed trade shifts
-the size, and sometimes the existence, of every trade after it). Two
+the size, and sometimes the existence, of every trade after it). Three
 consequences worth naming rather than glossing over:
 
 - **`block last-bar entry` moves the wrong way for its own stated
-  mechanism.** Removing 10 trades that were guaranteed near-breakeven
+  mechanism.** Removing 14 trades that were guaranteed near-breakeven
   losers (a bad fill with no time to move) should free roughly
-  10 × $20 ≈ $200. It actually cost $77,905. That gap is the cascading
-  effect: removing those 10 entries changed the account-value path,
+  14 × $20 ≈ $280. It actually cost $210,770. That gap is the cascading
+  effect: removing those 14 entries changed the account-value path,
   which changed sizing and downstream trade generation for the rest of
   the sample. The defect claim (#7 below) still holds; the *dollar
   figure* attached to it is a chain effect, not the isolated cost of
-  those 10 fills.
+  those 14 fills.
 - **`CME trading-day mapping` is not the minor, derivative item this
-  document originally called it.** It moves $599,885 — the largest
-  single step in the whole chain, larger than the entire net effect of
-  every correction combined. See the correction to item #9 below.
+  document originally called it.** It moves +$525,595 — the largest
+  positive step in the chain, larger in size than the net effect of all
+  eleven bias corrections combined. See the correction to item #9 below.
+- **Individual steps are fragile; the endpoints are not.** Correcting the
+  bar timestamps (item #13) moved the corrected endpoint by only 2.0%,
+  but moved single steps by hundreds of thousands of dollars: scanning
+  overnight bars went from −$513,285 to −$870,855, and the exclusive
+  window end changed sign (−$73,815 to +$197,265). Read the per-step
+  figures as orders of magnitude, not exact prices.
 
 ### 1. Equity curve padded to calendar days — CONFIRMED, quantified exactly
 
@@ -130,10 +143,10 @@ any change in its metrics is purely the date grid.
 
 | | Legacy | Corrected | Ratio | `sqrt(365/252)` |
 |---|---:|---:|---:|---:|
-| QQQ Sharpe | 0.6375 | 0.7683 | 1.2052 | 1.2036 |
-| QQQ volatility | 18.36% | 22.11% | 1.2043 | 1.2036 |
+| QQQ Sharpe | 0.6375 | 0.7685 | 1.2054 | 1.2036 |
+| QQQ volatility | 18.36% | 22.11% | 1.2047 | 1.2036 |
 
-Both match the closed form to within 0.13%. The entire benchmark
+Both match the closed form to within 0.2%. The entire benchmark
 improvement is this one arithmetic artefact and nothing else.
 
 **Confidence: certain.** This is the single largest driver of the Sharpe
@@ -165,7 +178,7 @@ assume, not a bug that was fixed. It should be presented as such.
 **Combined effect of #2 and #3:** round-turn cost $9.20 → $20.00, a flat
 **$10.80 per contract per round turn**. Verified analytically and pinned
 by a test (`test_cost_delta_per_contract_is_exactly_10_80`). On the real
-feed this step costs **$267,587** (row 2 of the step table) — more than
+feed this step costs **$350,697** (row 3 of the step table) — more than
 the naive trades × contracts × $10.80 estimate, because lower PnL also
 shrinks every later position through the equity-based sizing.
 
@@ -192,8 +205,8 @@ stated.** The bug is symmetric, not one-sided:
 Which effect dominates is an empirical question about how often the
 market gaps through a stop versus through a target in this sample — not
 something derivable from the code. On the real 10-year feed the target
-side won: turning gap-aware fills on **raised** net PnL by $227,300 (row
-3 of the step table). The synthetic-bars run in this repository's test
+side won: turning gap-aware fills on **raised** net PnL by $259,490 (row
+4 of the step table). The synthetic-bars run in this repository's test
 suite showed the opposite sign (−$287k) purely because that generator is
 an unconditioned random walk with no drift asymmetry between stop-side
 and target-side gaps — a reminder that the synthetic numbers are for
@@ -211,9 +224,8 @@ bars existed. The real file is near-continuous Globex (~1,098 bars/day).
 **What:** a multi-day long could be stopped out at 02:00 and the simulator
 would not notice until 08:30 the next session.
 
-**Direction on real data:** costs $513,285 and adds 91 trades (row 4 of
-the step table) — the single largest negative correction in the whole
-chain. It interacts with #4 (both change how a gap-through-a-level is
+**Direction on real data:** costs $870,855 and adds 87 trades (row 5 of
+the step table) — the single largest step in the whole chain. It interacts with #4 (both change how a gap-through-a-level is
 priced) so the two should not be read as independent, but unlike #4 this
 one has a clean, consistent direction: seeing the overnight bars always
 catches a stop closer to its true crossing than waiting for the next
@@ -235,7 +247,11 @@ structurally incapable of triggering an entry.
 **Direction:** neutral on optimism; it silently discarded one entry bar
 per day.
 
-**Confidence: certain** as a defect, **low** materiality.
+**On real data:** +28 trades and +$197,265 (row 6 of the step table). That
+dollar figure is mostly a chain effect; before the timestamp correction
+the same step measured −$73,815.
+
+**Confidence: certain** as a defect; the dollar materiality is not stable.
 
 ### 7. Entries allowed on the session's final bar — CONFIRMED, small
 
@@ -257,8 +273,8 @@ bar, so the exit happened on day 5's *first* bar (08:30, before the
 trading window even opens). The corrected engine adds `and is_last_bar`,
 exiting at that session's close (14:30) instead.
 
-**Magnitude on real data:** +$141,815 and +0.012 Sharpe (row 7 of the
-step table), and it removes 74 trades — the exit lands on a later bar, so
+**Magnitude on real data:** +$240,260 and +0.031 Sharpe (row 8 of the
+step table), and it removes 75 trades — the exit lands on a later bar, so
 some positions that used to close and free the slot for a second entry no
 longer do.
 
@@ -290,9 +306,9 @@ convention) instead of their plain calendar date.
 
 **This document previously dismissed this as a minor consequence of #5
 with "no independent economic content." That was wrong.** On the real
-feed, this single step moves net PnL by **+$599,885** and Sharpe by
-**+0.085** — the largest step in the whole chain, bigger than the
-combined net effect of every other correction put together. It changes
+feed, this single step moves net PnL by **+$525,595** and Sharpe by
+**+0.070** — the largest positive step in the chain, bigger than the
+combined net effect of the eleven bias corrections. It changes
 which trading day a late-evening bar's entries, exits and day-counts get
 attributed to, which shifts `max_long_hold_days` exit timing and the
 2-trades-per-day cap for a meaningful share of the sample. It deserves the
@@ -322,7 +338,7 @@ smooth equity curve produces `std ~ 1e-16`, not `0`, so Sharpe returned
 published number** — a real daily return series has `std ~ 1e-2` — and a
 test now covers it.
 
-### 13. Bar timestamps off by one minute — CONFIRMED, figures not yet regenerated
+### 13. Bar timestamps off by one minute — CONFIRMED, corrected
 
 **Where:** `load_nq_1min` and `resample_5min` treat each 1-minute
 timestamp as the *start* of its bar. MultiCharts exports stamp bars at
@@ -335,14 +351,25 @@ built from minutes shifted by one. The opening range then includes the
 
 **Status:** confirmed on the file behind the published numbers: the first
 bar after the 17:00 reopen is stamped 17:01 on 2,509 of 2,510 sessions.
-The figures in this document have not yet been regenerated with the
-correction. `run_data_diagnostics` now reports which convention a file
-appears to use (the first bar after the halt, 17:00 or 17:01), and
-`load_nq_1min(path, stamped_at='end')` corrects it. On another copy of
-the MultiCharts history, correcting the shift moved this engine's net PnL
-per contract from $179.7 to $170.5. The published figures were produced
-with `stamped_at='start'`, and the reproduction check below asserts them
-under that setting only.
+`run_data_diagnostics` reports which convention a file appears to use
+(the first bar after the halt, 17:00 or 17:01), and
+`load_nq_1min(path, stamped_at='end')` corrects it. The correction is now
+the first step of the attribution chain, so the legacy row still
+reproduces the original notebook and every row after it uses the right
+bars.
+
+**Magnitude on real data:** +$359,445 and +7 trades on the legacy
+conventions (row 2 of the step table). Applied to the final configuration
+instead, it moves the headline from 1,725 trades / $2,800,810 / PnL per
+contract $176.94 / Sharpe 1.0165 to 1,724 trades / $2,744,225 / $176.08 /
+Sharpe 1.0022: −2.0% on net PnL. The 5-minute bar count drops from 693,117
+to 688,976, almost entirely because the last minute before each daily
+halt no longer forms a one-minute "bar" of its own: read as bar start,
+the minute stamped 16:00 (2,488 sessions), or 15:15 in the years when
+the halt started then (1,552), opened a new 5-minute bucket.
+
+**Confidence: certain** as a defect; small on the headline, large on
+individual attribution steps (see the caveat under the step table).
 
 ---
 
@@ -350,7 +377,7 @@ under that setting only.
 
 **Timezone.** The original README described the window as "pre-market
 08:30–10:00 **ET**". The feed is stamped **US/Central**: the volume
-diagnostic finds the cash-open spike at 08:30 (×6.4 versus the previous
+diagnostic finds the cash-open spike at 08:30 (×6.1 versus the previous
 half hour), and the 16:00–17:00 maintenance halt is in the right place for
 CT. So 08:30–10:00 CT = 09:30–11:00 ET — the first 90 minutes of the cash
 session. **The code was always right; only the label was wrong.** No
@@ -376,22 +403,19 @@ the CSVs in place, anyone with the data can reproduce the same check:
 python tools/bias_attribution.py --nq Data/nq-10y-1min.csv --qqq Data/QQQ_daily.csv
 ```
 
-This runs the same 693,117 five-minute bars through every intermediate
-configuration, one flag at a time, and checks both endpoints against the
-published numbers. Expect:
+This loads the file twice — start-stamped for the legacy row, end-stamped
+for every row after it — runs every intermediate configuration, one flag
+at a time, and checks both endpoints against the published numbers.
+Expect:
 
 ```
 [MATCH] legacy trades        got   1,728 | published   1,728
 [MATCH] legacy net PnL       got 3,287,392.0 | published 3,287,392.0
 [MATCH] legacy Sharpe        got     0.95 | published     0.95
-[MATCH] corrected trades     got   1,725 | published   1,725
-[MATCH] corrected net PnL    got 2,800,810.0 | published 2,800,810.0
-[MATCH] corrected Sharpe     got     1.02 | published     1.02
+[MATCH] corrected trades     got   1,724 | published   1,724
+[MATCH] corrected net PnL    got 2,744,225.0 | published 2,744,225.0
+[MATCH] corrected Sharpe     got     1.0 | published     1.0
 ```
-
-Add `--stamped-at end` to run the whole chain on an end-stamped file
-(item #13); the reproduction check is then skipped, since the published
-numbers were produced with start-stamped bars.
 
 Run without `--nq`/`--qqq` to use deterministic synthetic bars instead.
 Synthetic results are useful only for verifying *mechanism and sign

@@ -76,7 +76,8 @@ a flat per-contract amount and does not scale with order size.
 ## Results
 
 Ten years of NQ, March 2015 – April 2025: 3.4M one-minute bars resampled to
-693,117 five-minute bars. 1% risk regime.
+688,976 five-minute bars, with each 1-minute timestamp read as the end of its
+bar (the MultiCharts export convention). 1% risk regime.
 
 The stop-fill row is the headline: it is the entry convention the
 MultiCharts strategy uses. The other two rows are kept because the audit in
@@ -84,23 +85,25 @@ MultiCharts strategy uses. The other two rows are kept because the audit in
 
 | Configuration | Sharpe | Volatility | Max DD | t-stat | CAGR | Net PnL (USD) | Trades |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Legacy conventions, close fill | 0.95 | 11.25% | 15.06% | 3.63 | 15.65% | 3,287,392 | 1,728 |
-| Corrected conventions, close fill | 1.11 | 14.11% | 17.73% | 3.49 | 15.74% | 3,323,800 | 1,736 |
-| **Corrected conventions, stop fill** | **1.02** | **14.12%** | **16.82%** | **3.24** | **14.26%** | **2,800,810** | **1,725** |
+| Legacy conventions, close fill | 1.00 | 11.24% | 13.33% | 3.79 | 16.58% | 3,646,837 | 1,735 |
+| Corrected conventions, close fill | 1.13 | 14.13% | 13.73% | 3.57 | 16.04% | 3,437,125 | 1,734 |
+| **Corrected conventions, stop fill** | **1.00** | **14.18%** | **16.68%** | **3.22** | **14.09%** | **2,744,225** | **1,724** |
 | QQQ buy & hold | 0.77 | 22.11% | 35.12% | — | 15.61% | — | — |
 
 The legacy row keeps the original calendar-day equity grid, which
 understates Sharpe and volatility by a factor of `sqrt(252/365)`; on that
 same grid QQQ scores 0.64, not 0.77. The other rows and the benchmark use
-trading days. See [What moves the number](#what-moves-the-number).
+trading days. The original notebook, which also read the timestamps as bar
+start, published 0.95 and 3,287,392 USD for the legacy row. See
+[What moves the number](#what-moves-the-number).
 
 The 2% risk regime doubles position size without changing the trade list, so
 per-contract economics and the t-stat are identical to the 1% regime:
 
 | Configuration (2% risk) | Sharpe | Volatility | Max DD | CAGR | Net PnL (USD) | Avg contracts |
 |---|---:|---:|---:|---:|---:|---:|
-| Legacy conventions, close fill | 0.96 | 23.44% | 29.51% | 32.98% | 16,358,914 | 45.58 |
-| Corrected conventions, stop fill | 1.02 | 29.43% | 32.12% | 29.26% | 12,069,455 | 39.65 |
+| Legacy conventions, close fill | 0.99 | 23.45% | 26.48% | 34.80% | 18,876,321 | 49.33 |
+| Corrected conventions, stop fill | 1.00 | 29.50% | 32.55% | 28.70% | 11,510,315 | 37.03 |
 
 Sub-periods, split on 31 January 2022 (corrected conventions, stop fill).
 This is a split of one backtest, not an out-of-sample test — see
@@ -108,10 +111,10 @@ This is a split of one backtest, not an out-of-sample test — see
 
 | Segment | Sharpe | Volatility | Max DD | CAGR |
 |---|---:|---:|---:|---:|
-| Stop fill, 2015-03 → 2022-01 | 1.03 | 10.27% | 16.42% | 10.58% |
-| Stop fill, 2022-01 → 2025-04 | 1.10 | 20.03% | 16.82% | 22.12% |
+| Stop fill, 2015-03 → 2022-01 | 0.91 | 10.36% | 16.68% | 9.26% |
+| Stop fill, 2022-01 → 2025-04 | 1.20 | 20.07% | 16.09% | 24.61% |
 | QQQ, 2015-03 → 2022-01 | 0.97 | 21.23% | 28.56% | 20.03% |
-| QQQ, 2022-01 → 2025-04 | 0.35 | 23.85% | 29.56% | 5.63% |
+| QQQ, 2022-01 → 2025-04 | 0.35 | 23.87% | 29.56% | 5.63% |
 
 The t-stat tests mean per-contract PnL against zero, net of costs. It treats
 trades as independent draws; overlapping multi-day longs and the
@@ -130,48 +133,58 @@ corrected ones and described the change as the removal of simulation
 shortcuts. Running both engines on the same bars, one convention at a time,
 shows that is not what happened.
 
-Eleven corrections were applied. **Together they are worth +36,408 USD, about
-+1.1%.** They nearly cancel: some were optimistic, some pessimistic, and they
-are of comparable size. **The remaining −522,990 USD, about −15.7%, comes from
-a single fill convention** — whether a breakout order is assumed to fill at
-the closing price of the bar that broke the range, or at the breakout level
-itself. The original notebook used the first; the MultiCharts strategy uses
-the second.
+Net PnL fell from 3,287,392 to 2,744,225 USD (−543,167, −16.5%). Twelve
+corrections were applied: one to how the data file is read, eleven to the
+simulation conventions.
+
+- **The data fix is worth +359,445 USD on the legacy conventions.** The file
+  stamps each minute at its end and the original notebook read it as the
+  start, so every 5-minute bar was off by one minute.
+- **The eleven convention fixes together are worth −209,712 USD, about
+  −5.8%.** They largely cancel: some were optimistic, some pessimistic, and
+  the biggest move six figures in each direction.
+- **A single fill convention is worth −692,900 USD, about −20.2%**, more than
+  the whole drop: whether a breakout order is assumed to fill at the closing
+  price of the bar that broke the range, or at the breakout level itself. The
+  original notebook used the first; the MultiCharts strategy uses the second.
 
 | Step (cumulative, 1% risk) | Net PnL (USD) | Δ PnL | Sharpe |
 |---|---:|---:|---:|
-| Legacy, all original conventions | 3,287,392 | — | 0.948 |
-| Cost model, 9.20 → 20.00 USD per round turn | 3,019,805 | −267,587 | 0.910 |
-| Gap-aware fills | 3,247,105 | +227,300 | 0.873 |
-| Scan overnight bars | 2,733,820 | −513,285 | 0.855 |
-| Exclusive window end | 2,660,005 | −73,815 | 0.836 |
-| Block last-bar entry | 2,582,100 | −77,905 | 0.830 |
-| Max-hold exit at session close | 2,723,915 | +141,815 | 0.842 |
-| CME trading-day mapping | 3,323,800 | +599,885 | 0.927 |
-| Sizing floor and prev-session gate | 3,323,800 | 0 | 0.927 |
-| Daily mark-to-market | 3,323,800 | 0 | 0.919 |
-| Entry convention, close → stop fill | 2,800,810 | −522,990 | 0.843 |
-| Trading-day equity grid (drop calendar padding) | 2,800,810 | 0 | 1.017 |
+| Legacy, as originally published | 3,287,392 | — | 0.948 |
+| Bar timestamps read as bar end | 3,646,837 | +359,445 | 0.998 |
+| Cost model, 9.20 → 20.00 USD per round turn | 3,296,140 | −350,697 | 0.948 |
+| Gap-aware fills | 3,555,630 | +259,490 | 0.915 |
+| Scan overnight bars | 2,684,775 | −870,855 | 0.848 |
+| Exclusive window end | 2,882,040 | +197,265 | 0.869 |
+| Block last-bar entry | 2,671,270 | −210,770 | 0.841 |
+| Max-hold exit at session close | 2,911,530 | +240,260 | 0.871 |
+| CME trading-day mapping | 3,437,125 | +525,595 | 0.941 |
+| Sizing floor and prev-session gate | 3,437,125 | 0 | 0.941 |
+| Daily mark-to-market | 3,437,125 | 0 | 0.933 |
+| Entry convention, close → stop fill | 2,744,225 | −692,900 | 0.831 |
+| Trading-day equity grid (drop calendar padding) | 2,744,225 | 0 | 1.002 |
 
 Steps are applied cumulatively in this order, so each delta is marginal given
 everything above it. The engine is path-dependent — position size follows the
 running account value, so one changed trade shifts the size of every
-subsequent trade — which is why removing ten near-breakeven trades costs far
-more than those ten trades' own commissions.
+subsequent trade — which is why removing fourteen near-breakeven trades
+costs far more than those fourteen trades' own commissions, and why the data
+fix is worth +359,445 USD at the top of the chain but only −56,585 USD when
+applied to the final configuration (2,800,810 → 2,744,225).
 
 Two results are worth isolating.
 
 **The benchmark improved without its data changing.** QQQ's Sharpe moves from
-0.6375 to 0.7683 and its volatility from 18.36% to 22.11% between the two
+0.6375 to 0.7685 and its volatility from 18.36% to 22.11% between the two
 runs. The QQQ price series is identical in both. The entire difference is that
 the original padded the equity curve to all 365 calendar days while still
-annualising with 252 trading days. The ratio is 1.2052 against a closed-form
-`sqrt(365/252) = 1.2036` — a match to 0.13%, and confirmation that this one
+annualising with 252 trading days. The ratio is 1.2054 against a closed-form
+`sqrt(365/252) = 1.2036` — a match to 0.15%, and confirmation that this one
 arithmetic artefact explains the whole move. It made the strategy look *worse*,
 not better.
 
 **The entry convention is now resolved.** Close fills beat stop fills on
-this data (Sharpe 1.11 against 1.02), and an earlier version of this README
+this data (Sharpe 1.13 against 1.00), and an earlier version of this README
 reported the two as a band because it was not known which one the original
 strategy used. The MultiCharts code places a stop order for the next bar
 (`buy next bar at ... stop`), filled at the level or at the open if the bar
@@ -184,17 +197,26 @@ assumptions, is in **[docs/bias-audit.md](docs/bias-audit.md)**.
 ## Findings
 
 - Under corrected conventions and the stop-fill entry the MultiCharts
-  strategy uses, this engine's Sharpe is 1.02. Filling at the bar close
-  instead would report 1.11: one fill assumption is worth about ten Sharpe
-  points on its own.
+  strategy uses, this engine's Sharpe is 1.00. Filling at the bar close
+  instead would report 1.13: one fill assumption is worth about thirteen
+  Sharpe points on its own.
 - Per-contract PnL is identical across the 1% and 2% risk regimes. This is a
   mechanical identity of the simulator — the same fills, scaled — and says
-  nothing about whether the fills would survive at the ~40-contract average
+  nothing about whether the fills would survive at the ~37-contract average
   size the 2% regime reaches.
-- Sharpe after January 2022 is similar to Sharpe before it (1.03 → 1.10)
-  while QQQ's fell from 0.97 to 0.35 over the same window. This is a
-  sub-period comparison, not out-of-sample evidence: see
-  [Limitations](#limitations).
+- Sharpe after January 2022 is higher than before it (0.91 → 1.20) while
+  QQQ's fell from 0.97 to 0.35 over the same window. This is a sub-period
+  comparison, not out-of-sample evidence: see [Limitations](#limitations).
+- Fixing the one-minute timestamp shift barely moves the headline (Sharpe
+  1.02 → 1.00, net PnL −2.0%) but moves individual steps of the attribution
+  by hundreds of thousands of dollars: scanning overnight bars went from
+  −513,285 to −870,855 USD. Per-step attributions on a path-dependent engine
+  are fragile, and should be read as orders of magnitude, not exact prices.
+- Nearly all of the edge comes from longs: 332.71 USD per contract net of
+  costs on 877 longs, against 13.90 USD on 847 shorts. The shorts are close
+  to breakeven after costs. Whether that comes from the rule asymmetry
+  (multi-session longs, same-day shorts) or from a rising decade has not
+  been tested here.
 - Doubling the risk budget roughly doubles both volatility and maximum
   drawdown, leaving Sharpe unchanged, as linear scaling implies.
 - The largest single driver of the reported Sharpe was never the strategy: it
@@ -212,6 +234,7 @@ src/nq_breakout/
 tests/               test suite; no market data required
 tools/
     bias_attribution.py   runs both engines flag by flag
+    make_figures.py       regenerates the two README figures
 docs/
     bias-audit.md    every convention difference, one at a time
 data/README.md       expected CSV schema and feed properties
@@ -243,9 +266,10 @@ jupyter lab               # then run NQ_breakout.ipynb
 The attribution script reproduces every figure in this README and asserts both
 endpoints against the published numbers. Read the diagnostics output before
 trusting any metric: if the timezone, bar-timestamp or roll checks warn, the
-data is not what the engine assumes. For a file stamped at bar end (the
-MultiCharts export convention) add `--stamped-at end`, or load it with
-`load_nq_1min(path, stamped_at='end')`.
+data is not what the engine assumes. The data file is stamped at bar end (the
+MultiCharts export convention), so the script and the notebook load it with
+`load_nq_1min(path, stamped_at='end')`. `tools/make_figures.py`, with the same
+`--nq` and `--qqq` arguments, regenerates the two figures.
 
 ## Data
 
@@ -257,9 +281,8 @@ before trusting results, are documented in [data/README.md](data/README.md).
 
 The vendor is not currently recorded and is marked as an open item in that
 file. Results that cannot be traced to a named feed cannot be independently
-checked. The file's timestamps mark the *end* of each minute, which the
-published figures did not yet account for; see the bar timestamp item under
-[Limitations](#limitations).
+checked. The file's timestamps mark the *end* of each minute, and every
+figure in this README is computed with that reading.
 
 ## Limitations
 
@@ -267,18 +290,17 @@ published figures did not yet account for; see the bar timestamp item under
   [the comparison table](#relation-to-the-multicharts-strategy)), and only
   about 60% of entries coincide. The results here should not be read as the
   track record of the strategy that runs in MultiCharts.
-- **The published figures use bars shifted by one minute.** The data file
-  is stamped at bar end (MultiCharts convention): the first bar after the
-  17:00 reopen is written 17:01 on 2,509 of 2,510 sessions. The engine read
-  each timestamp as the start of its bar, so every 5-minute bar is off by a
-  minute and the opening range includes the 08:29–08:30 minute. The figures
-  in this README have not yet been regenerated with the correction
-  (`stamped_at='end'`). On another copy of the MultiCharts history,
-  correcting the shift moved this engine's net PnL per contract from 179.7
-  to 170.5 USD, so expect the corrected figures to be somewhat lower.
+- **Earlier figures used bars shifted by one minute.** The data file is
+  stamped at bar end (MultiCharts convention): the first bar after the 17:00
+  reopen is written 17:01 on 2,509 of 2,510 sessions. Earlier versions of
+  this README read each timestamp as the start of its bar, so every
+  5-minute bar was off by a minute and the opening range included the
+  08:29–08:30 minute. All figures here are now computed with the correct
+  reading; the correction moved the headline from Sharpe 1.02 and
+  2,800,810 USD to 1.00 and 2,744,225 USD.
 - **The sample ends in April 2025.** Nothing after that date is reported here.
 - **No partial fills.** Every order is filled complete at a single price. At
-  the ~40-contract average size of the 2% regime this is optimistic.
+  the ~37-contract average size of the 2% regime this is optimistic.
 - **Slippage is a static 1.5 ticks per side.** It does not vary with
   volatility, time of day, order size, or the gap through the level being
   crossed. Stress at 2–4 ticks before trusting the 2% regime.
